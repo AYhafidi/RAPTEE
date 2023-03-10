@@ -5,17 +5,15 @@ import random
 import socket
 
 ## Fonctions de protocol Gossip
-
-
 def Node(ID,IP,V,nodes):
 
     print(f"Je suis le noeud d'ID {ID} et d'IP : {IP} ")
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((IP, 0))  # bind to a random port on the node's IP address
+    server_socket.bind((str(IP), 0))  # bind to a random port on the node's IP address
     server_socket.listen()
 
     port = server_socket.getsockname()
-    nodes[ID] = (IP, port)
+    nodes[ID] = (str(IP), port)
     print(f"Node {ID} listening on {IP}:{port}")
 
 
@@ -36,25 +34,21 @@ def Node(ID,IP,V,nodes):
         # close the connection with the client
         client_socket.close()
 
+    
+    
 
-def Create_Nodes(N):
-    ID=100000
+
+    
+
+
+def Create_Nodes(N,IP):
+    ID=100001   
     nodes = {}
     for i in range(0,N):
-        IP_1 = random.choice(range(0,255))
-        IP_2 = random.choice(range(0,255))
-        IP_3 = random.choice(range(0,255))
-        IP = f'127.{IP_1}.{IP_2}.{IP_3}'
-        
-        ID+=1
-        Process=mp.Process(target=Node,args=(ID,IP,[],nodes))
-
-
-
-        
+       
+        Process=mp.Process(target=Node,args=(ID,IP[i],[],nodes))
+        ID +=1 
         Process.start()
-
-
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         for existing_ID, (existing_IP, existing_port) in nodes.items():
@@ -76,6 +70,18 @@ def Create_Nodes(N):
 
 
         Process.join()
+
+
+
+       
+def IP_Array(n):
+    IP = ipaddress.IPv4Address('127.0.0.1')
+    return [IP+i for i in range(n)]
+
+    
+
+
+
 
 
 
