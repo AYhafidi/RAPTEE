@@ -25,8 +25,9 @@ def Create_Nodes(N):
     for i in range(0,N):
         IP_1 = random.choice(range(0,255))
         IP_2 = random.choice(range(0,255))
-        #IP = f'192.168.{IP_1}.{IP_2}'
-        IP = f'127.0.0.1'
+        IP_3 = random.choice(range(0,255))
+        IP = f'127.{IP_1}.{IP_2}.{IP_3}'
+        
         ID+=1
         Process=mp.Process(target=Node,args=(ID,IP,[],nodes))
         
