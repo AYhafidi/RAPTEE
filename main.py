@@ -5,4 +5,6 @@ import Gossip
 import Brahms
 
 
-Gossip.Create_Nodes(100)
+#Gossip.Create_Nodes(100)
+if __name__ == '__main__':
+    Gossip.Create_Nodes(10)
