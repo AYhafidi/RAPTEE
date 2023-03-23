@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import random
+
 
 class Node:
     def __init__(self, max_storage):
@@ -25,3 +27,27 @@ class Node:
             return self.Su[i]
         else:
             return None
+
+#Next we try sampling
+
+class Sampler:
+    def __init__(self, size):
+        self.h = self.minwise_hash(size)
+        self.min_value = float('inf')
+        self.values = set()
+        
+    def next(self, value):
+        hash_value = self.h(value)
+        if hash_value < self.min_value:
+            self.min_value = hash_value
+            self.values = set([value])
+        elif hash_value == self.min_value:
+            self.values.add(value)
+            
+    def sample(self):
+        return random.sample(self.values, 1)[0]
+    
+    def minwise_hash(self, size):
+        a = random.randint(1, size - 1)
+        b = random.randint(0, size - 1)
+        return lambda x: (a * x + b) % size
