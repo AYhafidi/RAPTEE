@@ -45,7 +45,7 @@ def __init__(self, V0: List[int], S: List[Sampler], alpha: int, beta: int, gamma
 #auxilary functions : rand et updatesample utilisé dans gossip 
 
 
-def rand(self, V: Tuple[int], n: int) ->
+def rand(self, V: Tuple[int], n: int) -> List[int]:
   #return n random choice from V
    return random.sample(list(V), n)
   
