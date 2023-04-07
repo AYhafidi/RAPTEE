@@ -49,17 +49,22 @@ def __init__(self, V0: List[int], S: List[Sampler], alpha: int, beta: int, gamma
 # fonction "rand" qui prend une liste de nœuds et un nombre "n"
 # et retourne une liste de "n" nœuds choisis au hasard dans la liste.
 
-def rand(self, V: Tuple[int], n: int) -> List[int]:
+def rand(V: Tuple[int], n: int) -> List[int]:
   #return n random choice from V
    return random.sample(list(V), n)
 
 
 #La fonction "updateSample" met à jour chaque échantillon avec les nouveaux nœuds reçus.
 #  
-def updateSample(self, V: List[int]):
-    for id in V:
-        for s in self.S:
-            s.next(id)  
+def updateSample(Dynamic_view: List[int], push_messages: List[int], pull_messages: List[int], sample_list: List, alpha: float, beta: float, gamma: float, l1: int) -> List[int]:
+    
+    random_push_messages = rand(push_messages, int(alpha*l1))
+    random_pull_messages = rand(pull_messages, int(beta*l1))
+    random_sample_messages = rand(sample_list, int(gamma*l1))
+
+    Dynamic_view = [random_push_messages, random_pull_messages, random_sample_messages]
+
+    return Dynamic_view
 
 #Gossip protocol est la fonction principale qui implémente le protocole de gossip. 
 # Il y a une boucle infinie qui contient plusieurs étapes ( while true)
@@ -145,3 +150,16 @@ def receive_pull_replies(self) -> List[Tuple[int, List[int]]]:
     # Receive and parse pull replies
    
     return []
+
+V = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+n = 4
+
+
+result = rand(V, n)
+Dynamic_view = []
+result1 = updateSample(Dynamic_view,V, V, V, 0.4, 0.4, 0.2, 12)
+
+
+print(f"Sélection aléatoire de {n} éléments de {V}: {result}")
+
+print(f"La vue dynamique mise à jour est : {result1}")
