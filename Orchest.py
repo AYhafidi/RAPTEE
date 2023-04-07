@@ -80,7 +80,7 @@ def Net_init():
 
     # se connecter avec les machines de rang inférieur
     for i in range(0,proc_id):
-        peer_conn[i]=[machine_dict[i][2], Gossip_connect(machine_dict[i][0],machine_dict[i][1])]
+        peer_conn[i]=[machine_dict[i][2], Gossip_connect(machine_dict[i][0], machine_dict[i][1]), machine_dict[i][0]]
         send_data(peer_conn[i][1],proc_id)
     sys.stdout.flush()
     sys.stderr.flush()

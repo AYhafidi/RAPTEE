@@ -89,35 +89,33 @@ class Sampler:
 # print(machine_socks)
 
           
-# def Poll_machines_function(machine_socks):
-#     # Initialisation
-#     pollerObject = select.poll()
+def Poll_machines_function(machine_socks):
 
-#     # Adding sockets
-#     for sock in machine_socks:
-#         pollerObject.register(sock, select.POLLIN)
+    Hostname=socket.gethostname() #Nom de la machine
 
-#     # Traiter les données
-#     while True:
-#         fdVsEvent = pollerObject.poll()
+    # Initialisation
+    pollerObject = select.poll()
 
-#         for descriptor, Event in fdVsEvent:
-#             index = machine_socks.index(descriptor)
-#             if Event & select.POLLIN:
-#                 data = os.read(descriptor, 2048).decode()
-#                 print(f"Received data from socket {index}: {data}")
-#             elif Event & select.POLLERR:
-#                 print(f"Error reading data from socket {index}")
-#                 pollerObject.unregister(descriptor)
-#                 descriptor.close()
-#                 machine_socks.remove(descriptor)
+    # Adding sockets
+    for key in machine_socks:
+        pollerObject.register(machine_socks[key], select.POLLIN)
 
+    # Traiter les données
+    while True:
+        fdVsEvent = pollerObject.poll()
+
+        for descriptor, Event in fdVsEvent:
+            if Event & select.POLLIN:
+                data=recv_data(machine_socks[descriptor][0],1024)
+                print(f"[{Hostname}] : Recieved from {machine_socks[descriptor][1]} : {data}")
+                Event=0
+           
 
 
 
-# t = threading.Thread(target=Poll_machines_function, args=(machine_socks,))
-# t.start()
-                
+
+#threading.Thread(target=Poll_machines_function, args=(machine_socks,)).start()
+
 
         
 
@@ -140,8 +138,7 @@ sys.stdout.flush()
 
 
 machine_socks=Net_init()
-print(machine_socks)
-
+sockets_dict={machine_socks[i][1].fileno():[machine_socks[i][1], machine_socks[i][2]] for i in machine_socks}
 
 
 
