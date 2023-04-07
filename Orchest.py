@@ -49,7 +49,6 @@ def recv_data(socket,Size):
 
                                                 # # # Function d'initialisation # # #
 def Net_init():
-    
     # Peer connection mapping
     peer_conn={}
 
@@ -71,31 +70,44 @@ def Net_init():
 
     # Lancer l'écoute
     clientsocket.listen(Nmbr_procs-1)
+    
 
     # accepter les connexions des machines de rang supérieur
     for i in range(proc_id,Nmbr_procs-1):
         sock, addr = clientsocket.accept()
         rang = recv_data(sock,1024)
-        peer_conn[rang]=sock
+        peer_conn[rang]=[machine_dict[rang][2], sock]
 
     # se connecter avec les machines de rang inférieur
     for i in range(0,proc_id):
-        peer_conn[i]=Gossip_connect(machine_dict[i][0],machine_dict[i][1])
-        send_data(peer_conn[i],proc_id)
+        peer_conn[i]=[machine_dict[i][2], Gossip_connect(machine_dict[i][0],machine_dict[i][1])]
+        send_data(peer_conn[i][1],proc_id)
     sys.stdout.flush()
     sys.stderr.flush()
+
+    return peer_conn
     
 
 
-                                                ############## MAIN ###############
+
+    
+
+    
+
+
+         ############## MAIN ###############
 
 def main():
     # Verifier les arguments
-    if len(sys.argv)<3:
-        print("Usage : ./Orchest machine_file executable arg1 arg2 ...")
+    if len(sys.argv)<7:
+        print("Usage : ./Orchest machine_file executable ID_Base N Storage IP_Base...")
         exit()
     else:
         Executable=sys.argv[2]
+        id_base=sys.argv[3]
+        N=sys.argv[4]
+        max_storage=sys.argv[5]
+        ip_adress=sys.argv[6]
 
     # Mapping des infos
     machine_dict={}
@@ -108,7 +120,14 @@ def main():
     # Machine names
     with open(sys.argv[1],'r') as file:
         machine_Names = list(filter(None,file.read().splitlines()))
+    
     Nmbr_procs=len(machine_Names)
+    
+    # Id bases sent to different machines to identify which machine a node belongs to  
+    ids_bases=[]
+    for i in range (Nmbr_procs):
+        ids_bases.append(int(id_base)+i*int(N)) 
+
 
     # récuperer le nom de la machine
     Hostname=socket.gethostname()
@@ -119,12 +138,13 @@ def main():
     serversocket.listen(Nmbr_procs)
     Port=serversocket.getsockname()[1]
 
+
     # Lancer les procs
-    for Name in machine_Names:
+    for i in range(Nmbr_procs):
         #Liste des arguments
         OutpipeR ,OutpipeW=os.pipe()
         ErrpipeR ,ErrpipeW=os.pipe()
-        Args=["ssh",Name,"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port)]+sys.argv[3:]
+        Args=["ssh",machine_Names[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port)]+[str(ids_bases[i])]+sys.argv[4:]
         pid=os.fork()    
         if pid==0:
             # Redirection des tubes
@@ -144,7 +164,7 @@ def main():
     # Accepter les connexions
     for i in range(Nmbr_procs):
         sock_accept,addr=serversocket.accept()
-        machine_dict[i]=recv_data(sock_accept,1024)
+        machine_dict[i]=recv_data(sock_accept,1024)+[ids_bases[i]]
         sockets[i]=sock_accept
 
     # Envoi Nombre de processus + rang + Mapping des machines

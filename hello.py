@@ -5,12 +5,9 @@ import time
 import ipaddress
 from Orchest import *
 import sys
+import threading
 
 
-
-id_base = 10000
-max_storage=1
-n=5
 
 class Node:
     def __init__(self, max_storage, id,ip):
@@ -79,8 +76,83 @@ class Sampler:
         a = random.randint(1, size - 1)
         b = random.randint(0, size - 1)
         return lambda x: (a * x + b) % size
-                                                                ##### Initialisation des connexions #####
-Net_init()
+                                                               
+          
+
+
+# machine_socks=[]
+# s=0
+# for i in machine_sock
+#     machine_socks.append(machine_sock[s][1])
+#     s=s+1
+#     print(i)
+# print(machine_socks)
+
+          
+# def Poll_machines_function(machine_socks):
+#     # Initialisation
+#     pollerObject = select.poll()
+
+#     # Adding sockets
+#     for sock in machine_socks:
+#         pollerObject.register(sock, select.POLLIN)
+
+#     # Traiter les données
+#     while True:
+#         fdVsEvent = pollerObject.poll()
+
+#         for descriptor, Event in fdVsEvent:
+#             index = machine_socks.index(descriptor)
+#             if Event & select.POLLIN:
+#                 data = os.read(descriptor, 2048).decode()
+#                 print(f"Received data from socket {index}: {data}")
+#             elif Event & select.POLLERR:
+#                 print(f"Error reading data from socket {index}")
+#                 pollerObject.unregister(descriptor)
+#                 descriptor.close()
+#                 machine_socks.remove(descriptor)
+
+
+
+
+# t = threading.Thread(target=Poll_machines_function, args=(machine_socks,))
+# t.start()
+                
+
+        
+
+
+
+
+
+ ##### Parameters #####
+
+id_base=int(sys.argv[3])
+n=int(sys.argv[4])
+max_storage=int(sys.argv[5])
+base_ip=ipaddress.IPv4Address(sys.argv[6])
+# print(f"id_base :{id_base}\nN : {n}\nmax_storage : {max_storage}\nip_adress : {base_ip}")
+sys.stdout.flush()
+
+
+
+##### Initialisation des connexions #####
+
+
+machine_socks=Net_init()
+print(machine_socks)
+
+
+
+
+                              
+    
+    
+    
+         
+
+
+
 
 
 
@@ -100,7 +172,7 @@ def sending_and_receiving(node, num_neighbour, data):
 
 
 # Nodes
-base_ip = ipaddress.IPv4Address('127.0.0.1')
+# base_ip = ipaddress.IPv4Address('127.0.0.1')
 nodes=[Node(n, id_base+i, base_ip+i) for i in range(n)]
 
 
@@ -108,12 +180,12 @@ for i in range(0, n):
     # print ('\n  NEW NODE :')
     for j in range (0,max_storage):
         neighbor_id=nodes[i].Nu[j]
-        neighbor_ip = nodes[neighbor_id-10000].ip   # For the initial gossip connection, the nodes know their neighbors' connexion info. This won't be the case outside of this loop
-        neighbour_port = nodes[nodes[i].Nu[j]-10000].port
+        neighbor_ip = nodes[neighbor_id-id_base].ip   # For the initial gossip connection, the nodes know their neighbors' connexion info. This won't be the case outside of this loop
+        neighbour_port = nodes[nodes[i].Nu[j]-id_base].port
         neighbor_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create socket for neighbor j connection  
         # print('Neighbour ' + str(j+1) + ' is ' + str(nodes[i].Nu[j] - 10000))
         neighbor_sock.connect((str(neighbor_ip), neighbour_port )) # node i connecting to neighbor j
-        conn, address = nodes[nodes[i].Nu[j] - 10000].sock.accept()   # neighbour j accepting the connection 
+        conn, address = nodes[nodes[i].Nu[j] - id_base].sock.accept()   # neighbour j accepting the connection 
         Port=conn.getsockname()[1]
         nodes[i].neighbor_sockets_and_info[neighbor_id]=[[neighbor_ip,neighbour_port], neighbor_sock, conn]   # adding neighbor's info connection : his [IP,port],  
         
