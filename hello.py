@@ -80,25 +80,29 @@ class Sampler:
           
 
 
-# machine_socks=[]
-# s=0
-# for i in machine_sock
-#     machine_socks.append(machine_sock[s][1])
-#     s=s+1
-#     print(i)
-# print(machine_socks)
+                                                ##### Parameters #####
 
+id_base=int(sys.argv[3])
+n=int(sys.argv[4])
+max_storage=int(sys.argv[5])
+base_ip=ipaddress.IPv4Address(sys.argv[6])
+
+
+                                        ##### Initialisation des connexions #####
+
+
+machine_socks, proc_id=Net_init()
+sockets_dict={machine_socks[i][1].fileno():[machine_socks[i][1], machine_socks[i][2]] for i in machine_socks}
+
+                                                ### Poll Function ###
           
 def Poll_machines_function(machine_socks):
-
-    Hostname=socket.gethostname() #Nom de la machine
-
     # Initialisation
     pollerObject = select.poll()
 
     # Adding sockets
     for key in machine_socks:
-        pollerObject.register(machine_socks[key], select.POLLIN)
+        pollerObject.register(machine_socks[key][0], select.POLLIN)
 
     # Traiter les données
     while True:
@@ -106,40 +110,27 @@ def Poll_machines_function(machine_socks):
 
         for descriptor, Event in fdVsEvent:
             if Event & select.POLLIN:
+                sys.stdout.flush()
                 data=recv_data(machine_socks[descriptor][0],1024)
-                print(f"[{Hostname}] : Recieved from {machine_socks[descriptor][1]} : {data}")
+                print(f"Recieved from {machine_socks[descriptor][1]} : {data}")
+                sys.stdout.flush()
                 Event=0
            
 
 
 
 
-#threading.Thread(target=Poll_machines_function, args=(machine_socks,)).start()
+threading.Thread(target=Poll_machines_function, args=(sockets_dict,)).start()
 
 
         
 
 
 
-
-
- ##### Parameters #####
-
-id_base=int(sys.argv[3])
-n=int(sys.argv[4])
-max_storage=int(sys.argv[5])
-base_ip=ipaddress.IPv4Address(sys.argv[6])
-# print(f"id_base :{id_base}\nN : {n}\nmax_storage : {max_storage}\nip_adress : {base_ip}")
-sys.stdout.flush()
-
-
-
-##### Initialisation des connexions #####
-
-
-machine_socks=Net_init()
-sockets_dict={machine_socks[i][1].fileno():[machine_socks[i][1], machine_socks[i][2]] for i in machine_socks}
-
+                                           ### Exemple d'envoi ###
+if proc_id==0:
+    print(f"I'm sending the message to  {machine_socks[1][2]}")
+    send_data(machine_socks[1][1],[10020, 10050, 10034])
 
 
                               
@@ -164,12 +155,6 @@ def sending_and_receiving(node, num_neighbour, data):
      
 
 # Creating and initiaizing nodes
-
-
-
-
-# Nodes
-# base_ip = ipaddress.IPv4Address('127.0.0.1')
 nodes=[Node(n, id_base+i, base_ip+i) for i in range(n)]
 
 

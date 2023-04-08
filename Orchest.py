@@ -76,7 +76,7 @@ def Net_init():
     for i in range(proc_id,Nmbr_procs-1):
         sock, addr = clientsocket.accept()
         rang = recv_data(sock,1024)
-        peer_conn[rang]=[machine_dict[rang][2], sock]
+        peer_conn[rang]=[machine_dict[rang][2], sock, machine_dict[rang][0]]
 
     # se connecter avec les machines de rang inférieur
     for i in range(0,proc_id):
@@ -85,7 +85,7 @@ def Net_init():
     sys.stdout.flush()
     sys.stderr.flush()
 
-    return peer_conn
+    return peer_conn, proc_id
     
 
 
