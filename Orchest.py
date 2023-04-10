@@ -6,7 +6,25 @@ import subprocess
 import pickle
 import time
 import select
-                                                   # # #  POLL FUNCTION  # # # 
+import threading
+from enum import Enum
+class R_type(Enum):
+
+    CONNECTION = 0
+    PULL_REQ = 1
+    PUSH_REQ = 2
+    PULL_RES = 3
+    PUSH_RES = 4
+
+    
+class Request:
+    def __init__(self, source, destinataire, req, message):
+        self.source=source
+        self.destinataire=destinataire
+        self.type=R_type[req]
+        self.message=message
+
+                                                   # # #  POLL FUNCTIONS  # # # 
 
 def Poll_function(sockets, Machines_Names):
 
@@ -32,8 +50,64 @@ def Poll_function(sockets, Machines_Names):
                 Err=os.read(descriptor,2048).decode()
                 print(f"[ {Machines_Names[Index//2]} ] Err : {Err}",end="")
 
+def Poll_machines_function(machine_socks, listen_socket, n):
+    pollerObject = select.poll()
+
+    # Copy dict to use in poll
+    poll_socks=machine_socks.copy()
+    poll_socks[listen_socket.fileno()]=[listen_socket, "Listen", 0]
+    # Adding sockets
+    for key in poll_socks:
+        pollerObject.register(poll_socks[key][0], select.POLLIN)
+
+    # Traiter les données
+    while True:
+        fdVsEvent = pollerObject.poll()
+
+        for descriptor, Event in fdVsEvent:
+            if descriptor==listen_socket.fileno() and Event & select.POLLIN:
+                conn_socket, addr=listen_socket.accept()
+                poll_socks[conn_socket.fileno()]=[conn_socket, "Noeud", 0]
+                try:
+                    request=recv_data(conn_socket,1024)
+                    print(f"Request type :{request.type.value}")
+                except Exception as err:
+                    print(f"ERR : {err}")
+                    sys.stdout.flush()  
+                try:
+                    send_data(id_to_socket(machine_socks, request.destinataire, n),request)
+                except Exception as err:
+                    print(f"ERR : {err}")
+                    sys.stdout.flush()  
+                
+                Event=0
+            elif descriptor!=listen_socket.fileno() and Event & select.POLLIN:
+                request=recv_data(poll_socks[descriptor][0],1024)
+                Req_N=request.type.value
+                if Req_N==R_type.CONNECTION.value:
+                    print(f"Recieved request from {request.source} to connect with {request.destinataire}")
+                    sys.stdout.flush()
+                Event=0
+           
 
                                                     # # # <---  Functions ---> # # #
+
+def id_to_socket(machine_socks, id, n):
+    for i in machine_socks:
+        if id in range(machine_socks[i][2], machine_socks[i][2]+n):
+            print(f"Node in machine : {machine_socks[i][1]}")
+            sys.stdout.flush()
+            return machine_socks[i][0]
+    return 0 
+
+def Listening_socket(IP,Port,N):
+    # Créer une socket d'écoute
+    Hostname=socket.gethostname() #Nom de la machine
+    clientsocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    clientsocket.bind((IP,Port))
+    Port=clientsocket.getsockname()[1]
+    clientsocket.listen(N)
+    return clientsocket
 
 def Gossip_connect(IP_addr,Port):
     conn_socket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -68,6 +142,8 @@ def Net_init():
     # Recv Nmbr de processus + rang + Mapping des machines
     Nmbr_procs, proc_id, machine_dict=recv_data(conn_socket,1024)
 
+    
+    
     # Lancer l'écoute
     clientsocket.listen(Nmbr_procs-1)
     
@@ -82,10 +158,27 @@ def Net_init():
     for i in range(0,proc_id):
         peer_conn[i]=[machine_dict[i][2], Gossip_connect(machine_dict[i][0], machine_dict[i][1]), machine_dict[i][0]]
         send_data(peer_conn[i][1],proc_id)
-    sys.stdout.flush()
-    sys.stderr.flush()
 
-    return peer_conn, proc_id
+    
+
+    # Preparer un dict des sockets
+    sockets_dict={peer_conn[i][1].fileno():[peer_conn[i][1], peer_conn[i][2],peer_conn[i][0]] for i in peer_conn}
+    listen_socket=Listening_socket(Hostname,0,int(sys.argv[4])) #socket découte
+    threading.Thread(target=Poll_machines_function, args=(sockets_dict, listen_socket, int(sys.argv[4]))).start()
+
+                                              ### Exemple d'envoi ###
+    # if proc_id==0:
+    #     print(f"I'm sending the message to  {peer_conn[1][2]}")
+    #     send_data(peer_conn[1][1],[10020, 10050, 10034])
+
+                                             ### Exmple d'envoi de requete ###
+    if proc_id==0:
+        Info=listen_socket.getsockname()
+        connect_sock=Gossip_connect(Info[0],int(Info[1]))
+        req=Request(10001, 10021, "CONNECTION", "Hello")
+        send_data(connect_sock, req)
+
+    return listen_socket, Nmbr_procs
     
 
 
@@ -108,6 +201,14 @@ def main():
         N=sys.argv[4]
         max_storage=sys.argv[5]
         ip_adress=sys.argv[6]
+        # # Check if we have root privileges
+        # if os.geteuid() != 0:
+        # # If not, try to elevate privileges
+        #     os.seteuid(0)
+        #     if os.geteuid() != 0:
+        #         # If we still don't have privileges, exit with an error
+        #         print("Error: Failed to elevate privileges")
+        #         exit(1)
 
     # Mapping des infos
     machine_dict={}
@@ -120,8 +221,27 @@ def main():
     # Machine names
     with open(sys.argv[1],'r') as file:
         machine_Names = list(filter(None,file.read().splitlines()))
-    
-    Nmbr_procs=len(machine_Names)
+
+
+    # Vérifier la disponibilté des machines
+    Machine_Dispo=[]
+    print("[+]Connecting to machines ",end="")
+    for Name in machine_Names:
+        try :
+            result=subprocess.check_output(["ssh", Name, "exit"], stderr=subprocess.PIPE)
+            Machine_Dispo.append(Name)
+            print("★ ",end="")
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except :
+            print("☆ ",end="")
+    # Le nombre des machines disponible 
+    Nmbr_procs=len(Machine_Dispo)
+    if Nmbr_procs==0:
+        print("\nThere is no machines to run the script on")
+        exit(1)
+    else :
+        print("OK")
     
     # Id bases sent to different machines to identify which machine a node belongs to  
     ids_bases=[]
@@ -133,9 +253,7 @@ def main():
     Hostname=socket.gethostname()
 
     # Socket d'écoute
-    serversocket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    serversocket.bind((Hostname,0))
-    serversocket.listen(Nmbr_procs)
+    serversocket=Listening_socket(Hostname, 0, Nmbr_procs)
     Port=serversocket.getsockname()[1]
 
 
@@ -144,7 +262,7 @@ def main():
         #Liste des arguments
         OutpipeR ,OutpipeW=os.pipe()
         ErrpipeR ,ErrpipeW=os.pipe()
-        Args=["ssh",machine_Names[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port)]+[str(ids_bases[i])]+sys.argv[4:]
+        Args=["ssh",Machine_Dispo[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port)]+[str(ids_bases[i])]+sys.argv[4:]
         pid=os.fork()    
         if pid==0:
             # Redirection des tubes
@@ -172,7 +290,7 @@ def main():
         send_data(sockets[i],[Nmbr_procs,i,machine_dict])
     
     #fonction Poll
-    Poll_function(fd_Pipes, machine_Names)
+    Poll_function(fd_Pipes, Machine_Dispo)
 
 
 
