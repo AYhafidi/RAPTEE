@@ -6,16 +6,17 @@ import ipaddress
 from Orchest import *
 import sys
 import threading
+import select
 
 
 
 class Node:
-    def __init__(self, max_storage, n, id,ip):
+    def __init__(self, max_storage, n, id):
        
         # Node info 
         self.max_storage = max_storage  # maximum storage capacity of node
         self.id = id   # Node's ID
-        self.ip = ip   # Node's IP address
+        self.ip = socket.gethostname()   # Node's IP address
         self.Nu = random.sample(range(id_base,id_base+n),max_storage)  # neighbor list
         self.Su = []  # sample list
        
@@ -24,9 +25,9 @@ class Node:
        
         # Listening socket and binding 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Listening socket
-        self.sock.bind((str(self.ip), 0))  # bind socket to node id
-        self.port=self.sock.getsockname()[1] 
-        self.sock.listen(max_storage)  # listen for incoming connections
+        self.sock.bind((self.ip, 0))  # bind socket to node id
+        self.port=self.sock.getsockname()
+        self.sock.listen(n)  # listen for incoming connections
         #print("Node", self.id, "listening on port", self.port)
     
     def get_Nui(self, i):
@@ -85,13 +86,12 @@ class Sampler:
 id_base=int(sys.argv[3])
 n=int(sys.argv[4])
 max_storage=int(sys.argv[5])
-base_ip=ipaddress.IPv4Address(sys.argv[6])
 
 
                                         ##### Initialisation des connexions #####
 
 
-listen_socket, Nmbr_procs=Net_init()
+Orchest_sock, Nmbr_procs=Net_init()
     
 
 def sending_and_receiving(node, num_neighbour, data):
@@ -103,11 +103,43 @@ def sending_and_receiving(node, num_neighbour, data):
     sys.stderr.flush()
 
 # Creating and initiaizing nodes
-nodes={id_base+i : Node(max_storage, n*Nmbr_procs, id_base+i, base_ip+i) for i in range(n)}
-print("Done !")
+nodes={id_base+i : Node(max_storage, n*Nmbr_procs, id_base+i) for i in range(n)}
+Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
+
+# Sending Nodes info to Orchestrator
+try :
+    Size=sys.getsizeof(pickle.dumps((Local_Nodes_infos)))
+    send_data(Orchest_sock,Size)
+    send_data(Orchest_sock,Local_Nodes_infos)
+except:
+    print("Couldn't send")
+    sys.stdout.flush()
+
+# Recieving Nodes infos Size
+Size=recv_data(Orchest_sock, 1024)
+print(f"Size : {Size}")
+sys.stdout.flush()
+
+# Recieving Nodes infos
+size_recv=0
+data=b""
+while size_recv<Size:
+    parcket=Orchest_sock.recv(1024)
+    sys.stdout.flush()
+    size_recv+=sys.getsizeof(parcket)
+    data+=parcket
+Nodes_infos=pickle.loads(data)
+print(Nodes_infos)
 sys.stdout.flush()
 
 
+
+
+
+
+
+# print(Nodes_infos)
+# sys.stdout.flush()
 # for i in range(0, n):
 #     # print ('\n  NEW NODE :')
 #     for j in range (0,max_storage):

@@ -24,7 +24,7 @@ class Request:
         self.type=R_type[req]
         self.message=message
 
-                                                   # # #  POLL FUNCTIONS  # # # 
+#                                                    # # #  POLL FUNCTIONS  # # # 
 
 def Poll_function(sockets, Machines_Names):
 
@@ -43,51 +43,51 @@ def Poll_function(sockets, Machines_Names):
         for descriptor, Event in fdVsEvent:
             Index=sockets.index(descriptor)
             if Index%2==0 and Event & select.POLLIN:
-                Out=os.read(descriptor,2048).decode()
+                Out=os.read(descriptor,4096).decode()
                 print(f"[ {Machines_Names[Index//2]} ] Out : {Out}",end="")
 
             elif Index%2==1 and Event & select.POLLIN:
-                Err=os.read(descriptor,2048).decode()
+                Err=os.read(descriptor,4096).decode()
                 print(f"[ {Machines_Names[Index//2]} ] Err : {Err}",end="")
 
-def Poll_machines_function(machine_socks, listen_socket, n):
-    pollerObject = select.poll()
+# def Poll_machines_function(machine_socks, listen_socket, n):
+#     pollerObject = select.poll()
 
-    # Copy dict to use in poll
-    poll_socks=machine_socks.copy()
-    poll_socks[listen_socket.fileno()]=[listen_socket, "Listen", 0]
-    # Adding sockets
-    for key in poll_socks:
-        pollerObject.register(poll_socks[key][0], select.POLLIN)
+#     # Copy dict to use in poll
+#     poll_socks=machine_socks.copy()
+#     poll_socks[listen_socket.fileno()]=[listen_socket, "Listen", 0]
+#     # Adding sockets
+#     for key in poll_socks:
+#         pollerObject.register(poll_socks[key][0], select.POLLIN)
 
-    # Traiter les données
-    while True:
-        fdVsEvent = pollerObject.poll()
+#     # Traiter les données
+#     while True:
+#         fdVsEvent = pollerObject.poll()
 
-        for descriptor, Event in fdVsEvent:
-            if descriptor==listen_socket.fileno() and Event & select.POLLIN:
-                conn_socket, addr=listen_socket.accept()
-                poll_socks[conn_socket.fileno()]=[conn_socket, "Noeud", 0]
-                try:
-                    request=recv_data(conn_socket,1024)
-                    print(f"Request type :{request.type.value}")
-                except Exception as err:
-                    print(f"ERR : {err}")
-                    sys.stdout.flush()  
-                try:
-                    send_data(id_to_socket(machine_socks, request.destinataire, n),request)
-                except Exception as err:
-                    print(f"ERR : {err}")
-                    sys.stdout.flush()  
+#         for descriptor, Event in fdVsEvent:
+#             if descriptor==listen_socket.fileno() and Event & select.POLLIN:
+#                 conn_socket, addr=listen_socket.accept()
+#                 poll_socks[conn_socket.fileno()]=[conn_socket, "Noeud", 0]
+#                 try:
+#                     request=recv_data(conn_socket,1024)
+#                     print(f"Request type :{request.type.value}")
+#                 except Exception as err:
+#                     print(f"ERR : {err}")
+#                     sys.stdout.flush()  
+#                 try:
+#                     send_data(id_to_socket(machine_socks, request.destinataire, n),request)
+#                 except Exception as err:
+#                     print(f"ERR : {err}")
+#                     sys.stdout.flush()  
                 
-                Event=0
-            elif descriptor!=listen_socket.fileno() and Event & select.POLLIN:
-                request=recv_data(poll_socks[descriptor][0],1024)
-                Req_N=request.type.value
-                if Req_N==R_type.CONNECTION.value:
-                    print(f"Recieved request from {request.source} to connect with {request.destinataire}")
-                    sys.stdout.flush()
-                Event=0
+#                 Event=0
+#             elif descriptor!=listen_socket.fileno() and Event & select.POLLIN:
+#                 request=recv_data(poll_socks[descriptor][0],1024)
+#                 Req_N=request.type.value
+#                 if Req_N==R_type.CONNECTION.value:
+#                     print(f"Recieved request from {request.source} to connect with {request.destinataire}")
+#                     sys.stdout.flush()
+#                 Event=0
            
 
                                                     # # # <---  Functions ---> # # #
@@ -159,26 +159,8 @@ def Net_init():
         peer_conn[i]=[machine_dict[i][2], Gossip_connect(machine_dict[i][0], machine_dict[i][1]), machine_dict[i][0]]
         send_data(peer_conn[i][1],proc_id)
 
-    
 
-    # Preparer un dict des sockets
-    sockets_dict={peer_conn[i][1].fileno():[peer_conn[i][1], peer_conn[i][2],peer_conn[i][0]] for i in peer_conn}
-    listen_socket=Listening_socket(Hostname,0,int(sys.argv[4])) #socket découte
-    threading.Thread(target=Poll_machines_function, args=(sockets_dict, listen_socket, int(sys.argv[4]))).start()
-
-                                              ### Exemple d'envoi ###
-    # if proc_id==0:
-    #     print(f"I'm sending the message to  {peer_conn[1][2]}")
-    #     send_data(peer_conn[1][1],[10020, 10050, 10034])
-
-                                             ### Exmple d'envoi de requete ###
-    if proc_id==0:
-        Info=listen_socket.getsockname()
-        connect_sock=Gossip_connect(Info[0],int(Info[1]))
-        req=Request(10001, 10021, "CONNECTION", "Hello")
-        send_data(connect_sock, req)
-
-    return listen_socket, Nmbr_procs
+    return conn_socket, Nmbr_procs
     
 
 
@@ -192,7 +174,7 @@ def Net_init():
 
 def main():
     # Verifier les arguments
-    if len(sys.argv)<7:
+    if len(sys.argv)<6:
         print("Usage : ./Orchest machine_file executable ID_Base N Storage IP_Base...")
         exit()
     else:
@@ -200,7 +182,6 @@ def main():
         id_base=sys.argv[3]
         N=sys.argv[4]
         max_storage=sys.argv[5]
-        ip_adress=sys.argv[6]
         # # Check if we have root privileges
         # if os.geteuid() != 0:
         # # If not, try to elevate privileges
@@ -289,6 +270,17 @@ def main():
     for i in range(Nmbr_procs):
         send_data(sockets[i],[Nmbr_procs,i,machine_dict])
     
+    # Recevoir les infos des Noeuds
+    Nodes_Infos={}
+    for i in range(Nmbr_procs):
+        Size=recv_data(sockets[i], 1024)
+        data=recv_data(sockets[i], Size)
+        Nodes_Infos.update(data)
+    Size=sys.getsizeof(pickle.dumps(Nodes_Infos))
+    for i in range(Nmbr_procs):
+        send_data(sockets[i], Size)
+        send_data(sockets[i], Nodes_Infos)
+
     #fonction Poll
     Poll_function(fd_Pipes, Machine_Dispo)
 
