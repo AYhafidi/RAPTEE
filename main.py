@@ -7,6 +7,7 @@ from Orchest import *
 import sys
 import threading
 import select
+import os
 
 
 
@@ -26,7 +27,7 @@ class Node:
         # Listening socket and binding 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Listening socket
         self.sock.bind((self.ip, 0))  # bind socket to node id
-        self.port=self.sock.getsockname()
+        self.port=self.sock.getsockname()[1]
         self.sock.listen(n)  # listen for incoming connections
         #print("Node", self.id, "listening on port", self.port)
     
@@ -102,6 +103,28 @@ def sending_and_receiving(node, num_neighbour, data):
     sys.stdout.flush()
     sys.stderr.flush()
 
+
+
+def polling_nodes(listening_sock):
+    
+
+    pollerObject = select.poll()
+
+    # Adding sockets
+    pollerObject.register(listening_sock, select.POLLIN)
+    while True:
+        fdVsEvent = pollerObject.poll()
+
+        for descriptor, Event in fdVsEvent:
+            
+            if Event==select.POLLIN:
+               
+                Acc_sock, addr=listening_sock.accept()
+                
+
+            
+
+
 # Creating and initiaizing nodes
 nodes={id_base+i : Node(max_storage, n*Nmbr_procs, id_base+i) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
@@ -130,33 +153,101 @@ while size_recv<Size:
     data+=parcket
 Nodes_infos=pickle.loads(data)
 print(Nodes_infos)
+
+
+print(Nodes_infos[10008][1])
+
+
+
 sys.stdout.flush()
 
 
 
+node_threads=[]
+for i in range (0,n):
+
+    node_threads = node_threads + [threading.Thread(target=polling_nodes, args=(nodes[i+id_base].sock,))]
 
 
+print('We are at the hostname :' + str(socket.gethostname()))
 
 
-# print(Nodes_infos)
-# sys.stdout.flush()
-# for i in range(0, n):
-#     # print ('\n  NEW NODE :')
-#     for j in range (0,max_storage):
-#         neighbor_id=nodes[i].Nu[j]
-#         neighbor_ip = nodes[neighbor_id-id_base].ip   # For the initial gossip connection, the nodes know their neighbors' connexion info. This won't be the case outside of this loop
-#         neighbour_port = nodes[nodes[i].Nu[j]-id_base].port
-#         neighbor_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create socket for neighbor j connection  
-#         neighbor_sock.connect((str(neighbor_ip), neighbour_port )) # node i connecting to neighbor j
-#         conn, address = nodes[nodes[i].Nu[j] - id_base].sock.accept()   # neighbour j accepting the connection 
-#         Port=conn.getsockname()[1]
-#         nodes[i].neighbor_sockets_and_info[neighbor_id]=[[neighbor_ip,neighbour_port], neighbor_sock, conn]   # adding neighbor's info connection : his [IP,port],  
+for i in range (0,n):
+    
+    print('We are at the i :' + str(i))
+    
+    try:
         
+        node_threads[i].start()
+
+        for j in range (0,max_storage):
+            
+            neighbor_id=nodes[i+id_base].Nu[j]
+            
+            print('Neighbour_id ' + str(neighbor_id))
+         
+            neighbor_ip = Nodes_infos[neighbor_id][0] 
+        
+            neighbour_port = Nodes_infos[neighbor_id][1] 
+           
+            print('neighbour_id ' + str(neighbor_id)+ ' neighbor ip ' + neighbor_ip + ' neighbor port ' + str(neighbour_port))
+            
+            Gossip_connect(neighbor_ip, neighbour_port)
+    
+        
+    except Exception as e:
+        
+        print(e)
+        
+        sys.stdout.flush()
+    
+
+
+
+
     
 
 # # # Testing by sending and receiving IDs (push)
 
-# sending_and_receiving(nodes[1], 0, nodes[1].id)
+# for i in range(0, n):
+#     # print ('\n  NEW NODE :')
+   
+#     for j in range (0,max_storage):
+#         neighbor_id=nodes[i+id_base].Nu[j]
+#         print("PARRRRRRR start")
+#         print('key of node is '+str(neighbor_id))
+       
+#         neighbor_ip = Nodes_infos[neighbor_id][0]   # For the initial gossip connection, the nodes know their neighbors' connexion info. This won't be the case outside of this loop
+       
+      
+#         neighbour_port = Nodes_infos[neighbor_id][1]
+        
+     
+#         neighbor_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create socket for neighbor j connection  
+       
+#         try:
+#             neighbor_sock.connect((str(neighbor_ip), neighbour_port )) # node i connecting to neighbor j
+#         except Exception as e:
+#             print(e)
+#             sys.stdout.flush()
+        
+#         conn, address = nodes[nodes[id_base+i].Nu[j]].sock.accept()   # neighbour j accepting the connection 
+        
+#         try:
+#             conn, address = nodes[nodes[id_base+i].Nu[j]].sock.accept()   # neighbour j accepting the connection 
+#         except Exception as e:
+#             print(e)
+#             sys.stdout.flush()
+        
+
+
+
+#         Port=conn.getsockname()[1]
+      
+#         nodes[id_base+i].neighbor_sockets_and_info[neighbor_id]=[[neighbor_ip,neighbour_port], neighbor_sock, conn]   # adding neighbor's info connection : his [IP,port],  
+#         print("PARRRRRRR end")
+      
+    
 
 while(1):
     continue
