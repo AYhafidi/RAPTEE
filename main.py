@@ -12,13 +12,13 @@ import os
 
 
 class Node:
-    def __init__(self, max_storage, n, id):
+    def __init__(self, max_storage, id):
        
         # Node info 
         self.max_storage = max_storage  # maximum storage capacity of node
         self.id = id   # Node's ID
         self.ip = socket.gethostname()   # Node's IP address
-        self.Nu = random.sample(range(id_base,id_base+n),max_storage)  # neighbor list
+        self.Nu = random.sample(range(id_base-n*proc_id,id_base+n*(Nmbr_procs-proc_id)),max_storage)  # neighbor list
         self.Su = []  # sample list
        
         # Interconnections' info
@@ -119,7 +119,7 @@ def polling_nodes(listening_sock):
 
 
 # Creating and initiaizing nodes
-nodes={id_base+i : Node(max_storage, n*Nmbr_procs, id_base+i) for i in range(n)}
+nodes={id_base+i : Node(max_storage, id_base+i) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
 node_threads=[]
@@ -140,7 +140,7 @@ while len(data)<length:
 Nodes_infos=pickle.loads(data)
 
 # Recevoir les informations de tout les noeuds
-
+time.sleep(proc_id*3)
 
 for i in range (0,n):
     
@@ -161,15 +161,18 @@ for i in range (0,n):
             neighbour_port = Nodes_infos[neighbor_id][1] 
            
             print('neighbour_id ' + str(neighbor_id)+ ' neighbor ip ' + neighbor_ip + ' neighbor port ' + str(neighbour_port))
-            
+            sys.stdout.flush()
+
             Gossip_connect(neighbor_ip, neighbour_port)
-    
+
         
     except Exception as e:
         
         print(e)
         
         sys.stdout.flush()
+
+        exit(1)
     
 print("END !")
 sys.stdout.flush()
