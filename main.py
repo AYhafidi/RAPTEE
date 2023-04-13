@@ -7,6 +7,7 @@ from Orchest import *
 import sys
 import threading
 import select
+import os
 
 
 
@@ -95,16 +96,40 @@ Orchest_sock, Nmbr_procs, proc_id=Net_init()
     
 
 
+
+
+def polling_nodes(listening_sock):
+    
+
+    pollerObject = select.poll()
+
+    # Adding sockets
+    pollerObject.register(listening_sock, select.POLLIN)
+    while True:
+        fdVsEvent = pollerObject.poll()
+
+        for descriptor, Event in fdVsEvent:
+            
+            if Event==select.POLLIN:
+               
+                Acc_sock, addr=listening_sock.accept()
+                
+
+            
+
+
 # Creating and initiaizing nodes
 nodes={id_base+i : Node(max_storage, n*Nmbr_procs, id_base+i) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
+node_threads=[]
+for i in range (0,n):
+    node_threads = node_threads + [threading.Thread(target=polling_nodes, args=(nodes[i+id_base].sock,))]
 # Envoi des informations des noeuds
 data_to_send=pickle.dumps(Local_Nodes_infos)
 send_data(Orchest_sock, len(data_to_send))
 send_data(Orchest_sock, Local_Nodes_infos)
 
-# Recevoir les informations de tout les noeuds
 
 # Recieve the len of the dict chiffré
 length=recv_data(Orchest_sock,4096)
@@ -114,8 +139,38 @@ while len(data)<length:
     data+=Orchest_sock.recv(4096)
 Nodes_infos=pickle.loads(data)
 
+# Recevoir les informations de tout les noeuds
 
 
+for i in range (0,n):
+    
+    print('We are at the i :' + str(i))
+    
+    try:
+        
+        node_threads[i].start()
+
+        for j in range (0,max_storage):
+            
+            neighbor_id=nodes[i+id_base].Nu[j]
+            
+            print('Neighbour_id ' + str(neighbor_id))
+         
+            neighbor_ip = Nodes_infos[neighbor_id][0] 
+        
+            neighbour_port = Nodes_infos[neighbor_id][1] 
+           
+            print('neighbour_id ' + str(neighbor_id)+ ' neighbor ip ' + neighbor_ip + ' neighbor port ' + str(neighbour_port))
+            
+            Gossip_connect(neighbor_ip, neighbour_port)
+    
+        
+    except Exception as e:
+        
+        print(e)
+        
+        sys.stdout.flush()
+    
 print("END !")
 sys.stdout.flush()
 while(1):
