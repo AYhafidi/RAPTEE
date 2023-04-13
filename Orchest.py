@@ -44,61 +44,27 @@ def Poll_function(sockets, Machines_Names):
             Index=sockets.index(descriptor)
             if Index%2==0 and Event & select.POLLIN:
                 Out=os.read(descriptor,4096).decode()
-                print(f"[ {Machines_Names[Index//2]} ] Out : {Out}",end="")
+                print(f"[ {Machines_Names[Index//2]}, rang{[Index//2]} ] Out : {Out}",end="")
 
             elif Index%2==1 and Event & select.POLLIN:
                 Err=os.read(descriptor,4096).decode()
-                print(f"[ {Machines_Names[Index//2]} ] Err : {Err}",end="")
+                print(f"[ {Machines_Names[Index//2]}, rang{[Index//2]} ] Err : {Err}",end="")
 
-# def Poll_machines_function(machine_socks, listen_socket, n):
-#     pollerObject = select.poll()
 
-#     # Copy dict to use in poll
-#     poll_socks=machine_socks.copy()
-#     poll_socks[listen_socket.fileno()]=[listen_socket, "Listen", 0]
-#     # Adding sockets
-#     for key in poll_socks:
-#         pollerObject.register(poll_socks[key][0], select.POLLIN)
-
-#     # Traiter les données
-#     while True:
-#         fdVsEvent = pollerObject.poll()
-
-#         for descriptor, Event in fdVsEvent:
-#             if descriptor==listen_socket.fileno() and Event & select.POLLIN:
-#                 conn_socket, addr=listen_socket.accept()
-#                 poll_socks[conn_socket.fileno()]=[conn_socket, "Noeud", 0]
-#                 try:
-#                     request=recv_data(conn_socket,1024)
-#                     print(f"Request type :{request.type.value}")
-#                 except Exception as err:
-#                     print(f"ERR : {err}")
-#                     sys.stdout.flush()  
-#                 try:
-#                     send_data(id_to_socket(machine_socks, request.destinataire, n),request)
-#                 except Exception as err:
-#                     print(f"ERR : {err}")
-#                     sys.stdout.flush()  
-                
-#                 Event=0
-#             elif descriptor!=listen_socket.fileno() and Event & select.POLLIN:
-#                 request=recv_data(poll_socks[descriptor][0],1024)
-#                 Req_N=request.type.value
-#                 if Req_N==R_type.CONNECTION.value:
-#                     print(f"Recieved request from {request.source} to connect with {request.destinataire}")
-#                     sys.stdout.flush()
-#                 Event=0
            
 
                                                     # # # <---  Functions ---> # # #
+ 
+def Nodes_info_recv(socket, Nodes_infos):
 
-def id_to_socket(machine_socks, id, n):
-    for i in machine_socks:
-        if id in range(machine_socks[i][2], machine_socks[i][2]+n):
-            print(f"Node in machine : {machine_socks[i][1]}")
-            sys.stdout.flush()
-            return machine_socks[i][0]
-    return 0 
+    # Recieve the len of the dict chiffré
+    length=recv_data(socket,4096)
+    # Recieve the dict
+    data=socket.recv(4096)
+    while len(data)<length:
+        data+=socket.recv(4096)
+    Nodes_infos.update(pickle.loads(data))
+
 
 def Listening_socket(IP,Port,N):
     # Créer une socket d'écoute
@@ -116,7 +82,12 @@ def Gossip_connect(IP_addr,Port):
 
 
 def send_data(socket,data):
-    socket.send(pickle.dumps(data))
+    data_to_send=pickle.dumps(data)
+    Size=len(data_to_send)
+    Size_sent=0
+    while(Size_sent<Size):
+        Size_sent+=socket.send(data_to_send[Size_sent:])
+
 
 def recv_data(socket,Size):
     return pickle.loads(socket.recv(Size))
@@ -140,14 +111,13 @@ def Net_init():
     send_data(conn_socket,data)
 
     # Recv Nmbr de processus + rang + Mapping des machines
-    Nmbr_procs, proc_id, machine_dict=recv_data(conn_socket,1024)
-
+    Nmbr_procs, proc_id, machine_dict=recv_data(conn_socket,4096)
     
     
     # Lancer l'écoute
     clientsocket.listen(Nmbr_procs-1)
     
-
+    time.sleep(1)
     # accepter les connexions des machines de rang supérieur
     for i in range(proc_id,Nmbr_procs-1):
         sock, addr = clientsocket.accept()
@@ -160,7 +130,7 @@ def Net_init():
         send_data(peer_conn[i][1],proc_id)
 
 
-    return conn_socket, Nmbr_procs
+    return conn_socket, Nmbr_procs, proc_id
     
 
 
@@ -202,8 +172,7 @@ def main():
     # Machine names
     with open(sys.argv[1],'r') as file:
         machine_Names = list(filter(None,file.read().splitlines()))
-
-
+    machine_Names_c=machine_Names.copy()
     # Vérifier la disponibilté des machines
     Machine_Dispo=[]
     print("[+]Connecting to machines ",end="")
@@ -219,7 +188,7 @@ def main():
     # Le nombre des machines disponible 
     Nmbr_procs=len(Machine_Dispo)
     if Nmbr_procs==0:
-        print("\nThere is no machines to run the script on")
+        print("\nThere are no machines to run the script on")
         exit(1)
     else :
         print("OK")
@@ -234,7 +203,11 @@ def main():
     Hostname=socket.gethostname()
 
     # Socket d'écoute
-    serversocket=Listening_socket(Hostname, 0, Nmbr_procs)
+    try:
+        serversocket=Listening_socket(Hostname, 0, Nmbr_procs)
+    except Exception as e:
+        print(e)
+        exit(1)
     Port=serversocket.getsockname()[1]
 
 
@@ -260,33 +233,41 @@ def main():
             fd_Pipes.append(OutpipeR)
             fd_Pipes.append(ErrpipeR)
 
+    #fonction Poll thread + Node_info threads
+    t=threading.Thread(target=Poll_function, args=(fd_Pipes, Machine_Dispo,))
+    t.start()
+    Node_info_threads=[]
+
+    # dict containing nodes infos
+    Nodes_infos={}
+
     # Accepter les connexions
     for i in range(Nmbr_procs):
         sock_accept,addr=serversocket.accept()
-        machine_dict[i]=recv_data(sock_accept,1024)+[ids_bases[i]]
-        sockets[i]=sock_accept
-
+        Acc_infos=recv_data(sock_accept,4096)+[ids_bases[i]] # Hostname, port, Id_base
+        rang=machine_Names.index(Acc_infos[0]) # Le rang de la mchine
+        if rang in machine_dict :
+            machine_Names_c.remove(Acc_infos[0])
+            rang=machine_Names_c.index(Acc_infos[0])+1
+        machine_dict[rang]=Acc_infos
+        sockets[rang]=sock_accept
     # Envoi Nombre de processus + rang + Mapping des machines
     for i in range(Nmbr_procs):
         send_data(sockets[i],[Nmbr_procs,i,machine_dict])
+        Node_info_threads.append(threading.Thread(target=Nodes_info_recv, args=(sockets[i], Nodes_infos,)))
+
+    # Lancer les threads pour récupérer les informations des noeuds
+    for i in range(Nmbr_procs):
+        Node_info_threads[i].start()
     
-    # Recevoir les infos des Noeuds
-    Nodes_Infos={}
     for i in range(Nmbr_procs):
-        Size=recv_data(sockets[i], 1024)
-        data=recv_data(sockets[i], Size)
-        Nodes_Infos.update(data)
-    Size=sys.getsizeof(pickle.dumps(Nodes_Infos))
+        Node_info_threads[i].join()
+
+    # Envoyer les information à chaque machine
+    data_to_send=pickle.dumps(Nodes_infos)
     for i in range(Nmbr_procs):
-        send_data(sockets[i], Size)
-        send_data(sockets[i], Nodes_Infos)
-
-    #fonction Poll
-    Poll_function(fd_Pipes, Machine_Dispo)
-
-
-
-
+        send_data(sockets[i], len(data_to_send))
+        send_data(sockets[i], Nodes_infos)
 
 if __name__ == '__main__':
     main()

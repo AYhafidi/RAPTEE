@@ -26,7 +26,7 @@ class Node:
         # Listening socket and binding 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Listening socket
         self.sock.bind((self.ip, 0))  # bind socket to node id
-        self.port=self.sock.getsockname()
+        self.port=self.sock.getsockname()[1]
         self.sock.listen(n)  # listen for incoming connections
         #print("Node", self.id, "listening on port", self.port)
     
@@ -91,72 +91,32 @@ max_storage=int(sys.argv[5])
                                         ##### Initialisation des connexions #####
 
 
-Orchest_sock, Nmbr_procs=Net_init()
+Orchest_sock, Nmbr_procs, proc_id=Net_init()
     
 
-def sending_and_receiving(node, num_neighbour, data):
-    send_data(node.neighbor_sockets_and_info[node.Nu[num_neighbour]][1],data)
-    print(f"Node :{node.id - id_base} sent his ID to his {num_neighbour+1} neighbor")
-    string=recv_data(node.neighbor_sockets_and_info[node.Nu[num_neighbour]][2],1024)
-    print('Node ' + str(node.Nu[num_neighbour]-id_base) + ' received : ' + str(string))
-    sys.stdout.flush()
-    sys.stderr.flush()
 
 # Creating and initiaizing nodes
 nodes={id_base+i : Node(max_storage, n*Nmbr_procs, id_base+i) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
-# Sending Nodes info to Orchestrator
-try :
-    Size=sys.getsizeof(pickle.dumps((Local_Nodes_infos)))
-    send_data(Orchest_sock,Size)
-    send_data(Orchest_sock,Local_Nodes_infos)
-except:
-    print("Couldn't send")
-    sys.stdout.flush()
+# Envoi des informations des noeuds
+data_to_send=pickle.dumps(Local_Nodes_infos)
+send_data(Orchest_sock, len(data_to_send))
+send_data(Orchest_sock, Local_Nodes_infos)
 
-# Recieving Nodes infos Size
-Size=recv_data(Orchest_sock, 1024)
-print(f"Size : {Size}")
-sys.stdout.flush()
+# Recevoir les informations de tout les noeuds
 
-# Recieving Nodes infos
-size_recv=0
-data=b""
-while size_recv<Size:
-    parcket=Orchest_sock.recv(1024)
-    sys.stdout.flush()
-    size_recv+=sys.getsizeof(parcket)
-    data+=parcket
+# Recieve the len of the dict chiffré
+length=recv_data(Orchest_sock,4096)
+# Recieve the dict
+data=Orchest_sock.recv(4096)
+while len(data)<length:
+    data+=Orchest_sock.recv(4096)
 Nodes_infos=pickle.loads(data)
-print(Nodes_infos)
+
+
+
+print("END !")
 sys.stdout.flush()
-
-
-
-
-
-
-
-# print(Nodes_infos)
-# sys.stdout.flush()
-# for i in range(0, n):
-#     # print ('\n  NEW NODE :')
-#     for j in range (0,max_storage):
-#         neighbor_id=nodes[i].Nu[j]
-#         neighbor_ip = nodes[neighbor_id-id_base].ip   # For the initial gossip connection, the nodes know their neighbors' connexion info. This won't be the case outside of this loop
-#         neighbour_port = nodes[nodes[i].Nu[j]-id_base].port
-#         neighbor_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create socket for neighbor j connection  
-#         neighbor_sock.connect((str(neighbor_ip), neighbour_port )) # node i connecting to neighbor j
-#         conn, address = nodes[nodes[i].Nu[j] - id_base].sock.accept()   # neighbour j accepting the connection 
-#         Port=conn.getsockname()[1]
-#         nodes[i].neighbor_sockets_and_info[neighbor_id]=[[neighbor_ip,neighbour_port], neighbor_sock, conn]   # adding neighbor's info connection : his [IP,port],  
-        
-    
-
-# # # Testing by sending and receiving IDs (push)
-
-# sending_and_receiving(nodes[1], 0, nodes[1].id)
-
 while(1):
     continue
