@@ -116,8 +116,7 @@ def Net_init():
     
     # Lancer l'écoute
     clientsocket.listen(Nmbr_procs-1)
-    
-    time.sleep(1)
+
     # accepter les connexions des machines de rang supérieur
     for i in range(proc_id,Nmbr_procs-1):
         sock, addr = clientsocket.accept()
