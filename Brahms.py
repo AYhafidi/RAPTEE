@@ -3,13 +3,20 @@
 ## Fonctions de protocol Brahms
 
 ## implémentation en code du pseudo code décrivant le protocol brahms dans le document :
-
-
-
 from typing import List, Tuple
 import random
 import time
+import os
+import sys
+import csv
 import socket
+import subprocess
+import pickle
+import time
+import select
+import threading
+from Orchest import R_type, Request
+from enum import Enum
 
 
 #Initialization of parameters
@@ -51,6 +58,10 @@ def pull_request(node_i, node_address, node_port):
     pull_reply = send_pull_request(request_header, node_address, node_port) 
 
     return pull_reply
+
+def extract_node_view(request):
+    view = request.message
+    return view
 
 
 
@@ -133,8 +144,9 @@ def gossip(self):
 
             for i in range (self.alpha*len(self.V)): # envoie des requêtes de type "push" à un nombre limité de nœuds choisis au hasard
                 #limited push
-                receiver = random.choice(self.rand(self.V,1))
-                self.push(i,receiver)
+                receiver_id= random.choice(self.rand(self.V,1))
+                receiver_ip, receiver_port = self.V[receiver_id][1]
+                self.push(receiver_id, receiver_ip, receiver_port)
 
             for i in range (self.beta*len(self.V)): #envoie des requêtes de type "pull" à un autre ensemble de nœuds choisis au hasard
                 receiver_id= random.choice(self.rand(self.V,1))
@@ -230,3 +242,12 @@ receiver_ip, receiver_port = V[receiver_id][1]
 
 print(f"", {receiver_ip, receiver_id, receiver_port})
 
+# Création d'un message "Request" avec une vue de noeud
+view = {1: 'node1', 2: 'node2', 3: 'node3'}
+req = Request('nodeA', 'nodeB', 'PULL_REQ', view)
+
+# Extraction de la vue du noeud à partir du message
+node_view = extract_node_view(req)
+
+# Affichage de la vue du noeud
+print(node_view)
