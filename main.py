@@ -140,7 +140,6 @@ while len(data)<length:
 Nodes_infos=pickle.loads(data)
 
 # Recevoir les informations de tout les noeuds
-time.sleep(proc_id*3)
 
 for i in range (0,n):
     

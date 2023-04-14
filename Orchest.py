@@ -117,6 +117,7 @@ def Net_init():
     # Lancer l'écoute
     clientsocket.listen(Nmbr_procs-1)
 
+    time.sleep(1)
     # accepter les connexions des machines de rang supérieur
     for i in range(proc_id,Nmbr_procs-1):
         sock, addr = clientsocket.accept()
@@ -239,12 +240,11 @@ def main():
 
     # dict containing nodes infos
     Nodes_infos={}
-
     # Accepter les connexions
     for i in range(Nmbr_procs):
         sock_accept,addr=serversocket.accept()
         Acc_infos=recv_data(sock_accept,4096)+[ids_bases[i]] # Hostname, port, Id_base
-        rang=machine_Names.index(Acc_infos[0]) # Le rang de la mchine
+        rang=Machine_Dispo.index(Acc_infos[0]) # Le rang de la mchine
         if rang in machine_dict :
             machine_Names_c.remove(Acc_infos[0])
             rang=machine_Names_c.index(Acc_infos[0])+1
