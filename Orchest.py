@@ -16,7 +16,7 @@ class R_type(Enum):
     PULL_RES = 3
     PUSH_RES = 4
 
-    
+
 class Request:
     def __init__(self, source, destinataire, req, message):
         self.source=source
@@ -24,24 +24,31 @@ class Request:
         self.type=R_type[req]
         self.message=message
 
-#                                                    # # #  POLL FUNCTIONS  # # # 
+#                                                    # # #  POLL FUNCTIONS  # # #
 
 def Poll_function(sockets, Machines_Names):
-
+    N=0
+    Nmbr_procs=len(Machines_Names)
     # Initialisation
     pollerObject = select.poll()
 
     # Adding sockets
     for i in sockets:
-        pollerObject.register(i, select.POLLIN)
+        pollerObject.register(i, select.POLLIN | select.POLLHUP)
 
     # Traiter les données
     while(True):
-
+        if N==Nmbr_procs:
+            print("Why you stopped me peasant.")
+            break
         fdVsEvent = pollerObject.poll(-1)
 
         for descriptor, Event in fdVsEvent:
             Index=sockets.index(descriptor)
+            if Index%2==0 and Event==select.POLLHUP:
+                N+=1
+                print("[+]..",end="")
+                break
             if Index%2==0 and Event & select.POLLIN:
                 Out=os.read(descriptor,4096).decode()
                 print(f"[ {Machines_Names[Index//2]}, rang{[Index//2]} ] Out : {Out}",end="")
@@ -51,10 +58,10 @@ def Poll_function(sockets, Machines_Names):
                 print(f"[ {Machines_Names[Index//2]}, rang{[Index//2]} ] Err : {Err}",end="")
 
 
-           
+
 
                                                     # # # <---  Functions ---> # # #
- 
+
 def Nodes_info_recv(socket, Nodes_infos):
 
     # Recieve the len of the dict chiffré
@@ -112,8 +119,8 @@ def Net_init():
 
     # Recv Nmbr de processus + rang + Mapping des machines
     Nmbr_procs, proc_id, machine_dict=recv_data(conn_socket,4096)
-    
-    
+
+
     # Lancer l'écoute
     clientsocket.listen(Nmbr_procs-1)
 
@@ -130,14 +137,9 @@ def Net_init():
         send_data(peer_conn[i][1],proc_id)
 
 
-    return conn_socket, Nmbr_procs, proc_id
-    
+    return conn_socket, Nmbr_procs, proc_id, peer_conn
 
 
-
-    
-
-    
 
 
          ############## MAIN ###############
@@ -152,6 +154,7 @@ def main():
         id_base=sys.argv[3]
         N=sys.argv[4]
         max_storage=sys.argv[5]
+        Time_periode=sys.argv[6]
         # # Check if we have root privileges
         # if os.geteuid() != 0:
         # # If not, try to elevate privileges
@@ -185,18 +188,18 @@ def main():
             sys.stderr.flush()
         except :
             print("☆ ",end="")
-    # Le nombre des machines disponible 
+    # Le nombre des machines disponible
     Nmbr_procs=len(Machine_Dispo)
     if Nmbr_procs==0:
         print("\nThere are no machines to run the script on")
         exit(1)
     else :
-        print("OK")
-    
-    # Id bases sent to different machines to identify which machine a node belongs to  
+        print(f"OK (T={Time_periode}s)")
+
+    # Id bases sent to different machines to identify which machine a node belongs to
     ids_bases=[]
     for i in range (Nmbr_procs):
-        ids_bases.append(int(id_base)+i*int(N)) 
+        ids_bases.append(int(id_base)+i*int(N))
 
 
     # récuperer le nom de la machine
@@ -217,7 +220,7 @@ def main():
         OutpipeR ,OutpipeW=os.pipe()
         ErrpipeR ,ErrpipeW=os.pipe()
         Args=["ssh",Machine_Dispo[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port)]+[str(ids_bases[i])]+sys.argv[4:]
-        pid=os.fork()    
+        pid=os.fork()
         if pid==0:
             # Redirection des tubes
             os.close(OutpipeR)
@@ -233,9 +236,7 @@ def main():
             fd_Pipes.append(OutpipeR)
             fd_Pipes.append(ErrpipeR)
 
-    #fonction Poll thread + Node_info threads
-    t=threading.Thread(target=Poll_function, args=(fd_Pipes, Machine_Dispo,))
-    t.start()
+    #Node_info threads
     Node_info_threads=[]
 
     # dict containing nodes infos
@@ -258,7 +259,7 @@ def main():
     # Lancer les threads pour récupérer les informations des noeuds
     for i in range(Nmbr_procs):
         Node_info_threads[i].start()
-    
+
     for i in range(Nmbr_procs):
         Node_info_threads[i].join()
 
@@ -267,6 +268,9 @@ def main():
     for i in range(Nmbr_procs):
         send_data(sockets[i], len(data_to_send))
         send_data(sockets[i], Nodes_infos)
+
+    # Fonction poll
+    Poll_function(fd_Pipes, Machine_Dispo)
 
 if __name__ == '__main__':
     main()
