@@ -20,9 +20,11 @@ class Node:
         self.ip = socket.gethostname()   # Node's IP address
         self.Nu = random.sample(range(id_base-n*proc_id,id_base+n*(Nmbr_procs-proc_id)),max_storage)  # neighbor list
         self.Su = []  # sample list
-       
+        
         # Interconnections' info
-        self.neighbor_sockets_and_info = {}  # Neighbors' IPs and ports 
+        
+        self.neighbor_sockets = []
+        self.neighbor_personal_sockets = []
        
         # Listening socket and binding 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Listening socket
@@ -92,39 +94,111 @@ max_storage=int(sys.argv[5])
                                         ##### Initialisation des connexions #####
 
 
-Orchest_sock, Nmbr_procs, proc_id=Net_init()
+Orchest_sock, Nmbr_procs, proc_id = Net_init()
     
 
+# def echo_server(sockfd):
+#     MSG_LEN = 10*1024
+#     print("MOUUUR MSG LEN")
+#     while True:
+#         print("ÇBEL RECEIVE")
+#         # Receiving message
+#         data = sockfd.recv(MSG_LEN)
+#         print("mouraaaaaaaaaah")
+#         if not data:
+#             print("HNAAAAAAYAAAAA")
+#             break
+        
+#         else:
+#             print(data)
+
+        
+        
+        
+# def on_new_client(clientsocket,addr):
+#     while True:
+#         msg = clientsocket.recv(1024)
+#         #do some checks and if msg == someWeirdSignal: break:
+#         print addr, ' >> ', msg
+#         msg = raw_input('SERVER >> ')
+#         #Maybe some code to compute the last digit of PI, play game or anything else can go here and when you are done.
+#         clientsocket.send(msg)
+#     clientsocket.close()
 
 
 
-def polling_nodes(listening_sock):
+
+
+
+def polling_nodes(listening_sock,id_base, length, max_storage):
     
-
     pollerObject = select.poll()
 
     # Adding sockets
     pollerObject.register(listening_sock, select.POLLIN)
+
+    global neighbour_matrix 
+
+    neighbour_matrix = [[None] * max_storage for _ in range(length)]
+
+    print(neighbour_matrix) 
+   
     while True:
+   
         fdVsEvent = pollerObject.poll()
+
+        fds={}
 
         for descriptor, Event in fdVsEvent:
             
-            if Event==select.POLLIN:
+            if descriptor == listening_sock.fileno() and Event==select.POLLIN :
                
-                Acc_sock, addr=listening_sock.accept()
+                Acc_sock, addr = listening_sock.accept()
+                
+                received_bytes = Acc_sock.recv(1024)
+                
+                received_list = pickle.loads(received_bytes)
+
+                neighbour_matrix[received_list[0]-id_base][received_list[1]] = Acc_sock
+        
+                print(received_list)
+
                 
 
+
+
+
+
+
+
+                
+                
+                
+                
+                
+                
+                # fds[Acc_sock.fileno()] = Acc_sock
+                # tata=recv_data(Acc_sock,10*1024)
+                # print(tata)
+                # data = "batataaaaaaaaaaaaaaaaaaaa"
+                # acc_sock.sendall(data.encode())
+                # pollerObject.register(Acc_sock, select.POLLIN)
+
+
+
+                
             
+                
+
+           
 
 
 # Creating and initiaizing nodes
 nodes={id_base+i : Node(max_storage, id_base+i) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
-node_threads=[]
-for i in range (0,n):
-    node_threads = node_threads + [threading.Thread(target=polling_nodes, args=(nodes[i+id_base].sock,))]
+
+
 # Envoi des informations des noeuds
 data_to_send=pickle.dumps(Local_Nodes_infos)
 send_data(Orchest_sock, len(data_to_send))
@@ -133,6 +207,7 @@ send_data(Orchest_sock, Local_Nodes_infos)
 
 # Recieve the len of the dict chiffré
 length=recv_data(Orchest_sock,4096)
+
 # Recieve the dict
 data=Orchest_sock.recv(4096)
 while len(data)<length:
@@ -140,15 +215,23 @@ while len(data)<length:
 Nodes_infos=pickle.loads(data)
 
 # Recevoir les informations de tout les noeuds
+neighbour_matrix=[]
+
+node_threads=[]
+for i in range (0,n):
+    node_threads = node_threads + [threading.Thread(target=polling_nodes, args=(nodes[i+id_base].sock,id_base,len(Nodes_infos),max_storage,))]
+
 
 for i in range (0,n):
     
     print('We are at the i :' + str(i))
     
+
     try:
         
         node_threads[i].start()
 
+       
         for j in range (0,max_storage):
             
             neighbor_id=nodes[i+id_base].Nu[j]
@@ -160,9 +243,47 @@ for i in range (0,n):
             neighbour_port = Nodes_infos[neighbor_id][1] 
            
             print('neighbour_id ' + str(neighbor_id)+ ' neighbor ip ' + neighbor_ip + ' neighbor port ' + str(neighbour_port))
+            
             sys.stdout.flush()
 
-            Gossip_connect(neighbor_ip, neighbour_port)
+            conn = Gossip_connect(neighbor_ip, neighbour_port)
+            
+            nodes[i+id_base].neighbor_sockets.append(conn)
+
+            to_send= [nodes[i+id_base].id,j]
+
+            to_send = [nodes[i+id_base].id, j]
+           
+            to_send_bytes = pickle.dumps(to_send)
+           
+            conn.sendall(to_send_bytes)
+
+            
+
+
+# for i in range (0,n):      
+#     nodes[i].neighbor_personal_sockets = neighbour_matrix[]
+            
+
+
+
+            
+            
+            
+
+            
+
+
+            
+            
+            
+           
+
+          
+
+            
+
+
 
         
     except Exception as e:
@@ -172,8 +293,17 @@ for i in range (0,n):
         sys.stdout.flush()
 
         exit(1)
-    
+
+
+time.sleep(2)
+print(neighbour_matrix)         
+                
+
+
 print("END !")
 sys.stdout.flush()
+
+
+
 while(1):
     continue

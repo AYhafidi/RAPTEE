@@ -216,7 +216,7 @@ def main():
         #Liste des arguments
         OutpipeR ,OutpipeW=os.pipe()
         ErrpipeR ,ErrpipeW=os.pipe()
-        Args=["ssh",Machine_Dispo[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port)]+[str(ids_bases[i])]+sys.argv[4:]
+        Args=["ssh",Machine_Dispo[i],"python3","~/RAPTEE/"+Executable,Hostname,str(Port)]+[str(ids_bases[i])]+sys.argv[4:]
         pid=os.fork()    
         if pid==0:
             # Redirection des tubes
