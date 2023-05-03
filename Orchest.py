@@ -10,18 +10,17 @@ import threading
 from enum import Enum
 class R_type(Enum):
 
-    CONNECTION = 0
+    AUTHENTIFICATION_REQ = 0
     PULL_REQ = 1
-    PUSH_REQ = 2
-    PULL_RES = 3
-    PUSH_RES = 4
+    PULL_RES = 2
+    PUSH = 3
 
 
 class Request:
     def __init__(self, source, destinataire, req, message):
         self.source=source
         self.destinataire=destinataire
-        self.type=R_type[req]
+        self.type=R_type(req)
         self.message=message
 
 #                                                    # # #  POLL FUNCTIONS  # # #
