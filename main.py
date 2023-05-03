@@ -8,27 +8,36 @@ import sys
 import threading
 import select
 import os
+import multiprocessing
 
 def Ending_poll(sockets):
+    global event 
     global N_ready
-    N_ready=0
+    N_ready = 0
+    event = threading.Event()
     pollerObject = select.poll()
 
     # Adding sockets
-    [pollerObject.register(sockets[i], select.POLLIN) for i in sockets ]
+    [pollerObject.register(sockets[i], select.POLLIN | select.POLLHUP) for i in sockets ]
     while True:
-        if N_ready==Nmbr_procs:
+        time.sleep(1)
+        if event.is_set():
             break
         fdVsEvent = pollerObject.poll()
 
         for descriptor, Event in fdVsEvent:
-
-            if Event==select.POLLIN:
-
+            if Event==select.POLLHUP:    
+                continue
+            elif Event==select.POLLIN:
                 data=recv_data(sockets[descriptor], 4096)
+                sys.stdout.flush()
                 if data=="END":
                     N_ready+=1
+                Event=0
 
+    
+   
+          
 class Node:
     def __init__(self, max_storage, id):
 
@@ -115,10 +124,12 @@ Orchest_sock, Nmbr_procs, proc_id, peer_conn=Net_init()
 
 
 # Tableau des sockets
-
 Sockets={peer_conn[rang][1].fileno():peer_conn[rang][1] for rang in peer_conn}
-t=threading.Thread(target=Ending_poll, args=(Sockets, ))
+
+# Poll pour finir le programme
+t=threading.Thread(target=Ending_poll, args=(Sockets,))
 t.start()
+
 
 def polling_nodes(listening_sock):
 
@@ -142,6 +153,7 @@ def polling_nodes(listening_sock):
             elif listening_sock.fileno()!=descriptor and Event==select.POLLIN:
                 data=recv_data(Sockets[descriptor],4096)
                 print(f"[ DATA ]: {data}")
+                Event=0
 
 
 
@@ -173,7 +185,6 @@ Nodes_infos=pickle.loads(data)
 
 for i in range (0,n):
 
-    # print('We are at the i :' + str(i))
 
     try:
 
@@ -183,8 +194,7 @@ for i in range (0,n):
 
             neighbor_id=nodes[i+id_base].Nu[j]
 
-            # print('Neighbour_id ' + str(neighbor_id))
-
+            
             neighbor_ip = Nodes_infos[neighbor_id][0]
 
             neighbour_port = Nodes_infos[neighbor_id][1]
@@ -194,9 +204,10 @@ for i in range (0,n):
 
             nodes[i+id_base].neighbor_sockets[neighbor_id] = Gossip_connect(neighbor_ip, neighbour_port)
             
-            
-                
             send_data(nodes[i+id_base].neighbor_sockets[neighbor_id],"Hi! you little peasant.")
+
+            # print('Neighbour_id ' + str(neighbor_id) + "["+str(i+j)+"]")
+
 
     except Exception as e:
 
@@ -204,16 +215,23 @@ for i in range (0,n):
 
         sys.stdout.flush()
 
-# Prêt à ce terminer
+# # Prêt à ce terminer
+
 
 
 N_ready+=1
+
 for i in Sockets:
     send_data(Sockets[i], "END")
+
 
 # Fin du code
 while (N_ready<Nmbr_procs):
     continue
+event.set()
 t.join()
-print("END!")
+print("END.")
 sys.stdout.flush()
+
+
+

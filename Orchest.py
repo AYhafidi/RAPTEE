@@ -45,10 +45,12 @@ def Poll_function(sockets, Machines_Names):
 
         for descriptor, Event in fdVsEvent:
             Index=sockets.index(descriptor)
+            
             if Index%2==0 and Event==select.POLLHUP:
                 N+=1
                 print("[+]..",end="")
                 break
+            
             if Index%2==0 and Event & select.POLLIN:
                 Out=os.read(descriptor,4096).decode()
                 print(f"[ {Machines_Names[Index//2]}, rang{[Index//2]} ] Out : {Out}",end="")
@@ -57,7 +59,7 @@ def Poll_function(sockets, Machines_Names):
                 Err=os.read(descriptor,4096).decode()
                 print(f"[ {Machines_Names[Index//2]}, rang{[Index//2]} ] Err : {Err}",end="")
 
-
+            
 
 
                                                     # # # <---  Functions ---> # # #
@@ -147,7 +149,7 @@ def Net_init():
 def main():
     # Verifier les arguments
     if len(sys.argv)<6:
-        print("Usage : ./Orchest machine_file executable ID_Base N Storage IP_Base...")
+        print("Usage : ./Orchest machine_file executable ID_Base N Storage Time_Out...")
         exit()
     else:
         Executable=sys.argv[2]
@@ -196,11 +198,10 @@ def main():
     else :
         print(f"OK (T={Time_periode}s)")
 
-    # Id bases sent to different machines to identify which machine a node belongs to
+    # Id bases pour distinguer les noeuds de chaque machine
     ids_bases=[]
     for i in range (Nmbr_procs):
         ids_bases.append(int(id_base)+i*int(N))
-
 
     # récuperer le nom de la machine
     Hostname=socket.gethostname()
