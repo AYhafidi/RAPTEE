@@ -80,16 +80,16 @@ def Ending_poll(sockets):
 
     
 
-def polling_nodes(listening_sock):
+def polling_nodes(listening_sock, N_event):
 
     Sockets={}
     pollerObject = select.poll()
+    PUSH_IDS={}
 
     # Adding sockets
     pollerObject.register(listening_sock, select.POLLIN)
     while True:
         fdVsEvent = pollerObject.poll()
-
         for descriptor, Event in fdVsEvent:
 
             if listening_sock.fileno()==descriptor and Event==select.POLLIN:
@@ -100,9 +100,9 @@ def polling_nodes(listening_sock):
                 Sockets[Acc_sock.fileno()]=Acc_sock
             
             elif listening_sock.fileno()!=descriptor and Event==select.POLLIN:
-                data=recv_data(Sockets[descriptor],4096)
-                print(f"[ DATA ]: {data.message}")
-                Event=0
+                Req=recv_data(Sockets[descriptor],4096)
+                if Req.type==R_type.PUSH:
+                    PUSH_IDS[Req.source]=Req.message
 
 # Sampling class
 
@@ -136,7 +136,7 @@ class Sampler:
 id_base=int(sys.argv[3])
 n=int(sys.argv[4])
 max_storage=int(sys.argv[5])
-Time_periode=int(sys.argv[6])
+Rounds=int(sys.argv[6])
 
 
                                         ##### Initialisation des connexions #####
@@ -160,8 +160,10 @@ nodes={id_base+i : Node(max_storage, id_base+i) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
 node_threads=[]
+thread_event=[]
 for i in range (0,n):
-    node_threads = node_threads + [threading.Thread(target=polling_nodes, args=(nodes[i+id_base].sock,))]
+    thread_event.append(threading.Event())
+    node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base].sock, thread_event[i],)))
 # Envoi des informations des noeuds
 data_to_send=pickle.dumps(Local_Nodes_infos)
 send_data(Orchest_sock, len(data_to_send))
@@ -224,7 +226,7 @@ for Id in nodes:
 
 
 
-
+time_stop(10)
 
                                                         ###  Ending Programme  ###
 N_ready+=1

@@ -23,6 +23,15 @@ class Request:
         self.type=R_type(req)
         self.message=message
 
+def time_stop(N):
+    start_time=time.time()
+    print("Exchanging")
+    sys.stdout.flush()
+    while (time.time()-start_time)//1<N:
+        continue
+    print("OK !")
+    sys.stdout.flush()
+
 #                                                    # # #  POLL FUNCTIONS  # # #
 
 def Poll_function(sockets, Machines_Names):
@@ -155,7 +164,7 @@ def main():
         id_base=sys.argv[3]
         N=sys.argv[4]
         max_storage=sys.argv[5]
-        Time_periode=sys.argv[6]
+        Rounds=sys.argv[6]
         # # Check if we have root privileges
         # if os.geteuid() != 0:
         # # If not, try to elevate privileges
@@ -195,7 +204,7 @@ def main():
         print("\nThere are no machines to run the script on")
         exit(1)
     else :
-        print(f"OK (T={Time_periode}s)")
+        print(f"OK ({Rounds} Rounds)")
 
     # Id bases pour distinguer les noeuds de chaque machine
     ids_bases=[]
