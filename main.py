@@ -21,7 +21,8 @@ class Node:
         self.ip = socket.gethostname()   # Node's IP address
         self.Nu = random.sample(range(id_base-n*proc_id,id_base+n*(Nmbr_procs-proc_id)),max_storage)  # neighbor list
         self.Su = []  # sample list
-
+        self.PUSH_IDS={} # Pushed IDS
+        self.PULL_IDS={} # Pulled IDS
         # Interconnections' info
         self.neighbor_sockets = {}  # Neighbors' IPs and ports
 
@@ -66,7 +67,7 @@ def Ending_poll(sockets):
         time.sleep(1)
         if event.is_set():
             break
-        fdVsEvent = pollerObject.poll()
+        fdVsEvent = pollerObject.poll(2)
 
         for descriptor, Event in fdVsEvent:
             if Event==select.POLLHUP:    
@@ -80,16 +81,18 @@ def Ending_poll(sockets):
 
     
 
-def polling_nodes(listening_sock, N_event):
-
+def polling_nodes(Node, N_event):
+    
+    listening_sock=Node.sock
     Sockets={}
     pollerObject = select.poll()
-    PUSH_IDS={}
 
     # Adding sockets
     pollerObject.register(listening_sock, select.POLLIN)
     while True:
-        fdVsEvent = pollerObject.poll()
+        if N_event.is_set():
+            break
+        fdVsEvent = pollerObject.poll(2)
         for descriptor, Event in fdVsEvent:
 
             if listening_sock.fileno()==descriptor and Event==select.POLLIN:
@@ -102,7 +105,10 @@ def polling_nodes(listening_sock, N_event):
             elif listening_sock.fileno()!=descriptor and Event==select.POLLIN:
                 Req=recv_data(Sockets[descriptor],4096)
                 if Req.type==R_type.PUSH:
-                    PUSH_IDS[Req.source]=Req.message
+                    Node.PUSH_IDS[Req.source]=Req.message
+
+
+    
 
 # Sampling class
 
@@ -161,9 +167,11 @@ Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
 node_threads=[]
 thread_event=[]
+
 for i in range (0,n):
     thread_event.append(threading.Event())
-    node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base].sock, thread_event[i],)))
+    node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base], thread_event[i],)))
+
 # Envoi des informations des noeuds
 data_to_send=pickle.dumps(Local_Nodes_infos)
 send_data(Orchest_sock, len(data_to_send))
@@ -215,7 +223,9 @@ for Id in nodes:
     
     for Neighbour_Id in neighbour_samples:
         try:
+
             to_send_push=Request(Id, Neighbour_Id, 3, [nodes[Id].ip,nodes[Id].port])
+
         except Exception as e:
 
             print(e)
@@ -225,23 +235,40 @@ for Id in nodes:
         send_data(nodes[Id].neighbor_sockets[Neighbour_Id],to_send_push)
 
 
+print("Exchanging")
+sys.stdout.flush()
 
-time_stop(10)
+time_stop(5)
 
+print("OK !")
+sys.stdout.flush()
+
+for t_event in thread_event:
+    t_event.set()
+
+for N_thread in node_threads:
+    N_thread.join()
+
+
+if proc_id==0:
+    for i in range(3):
+        print(f"View : {nodes[id_base+i].PUSH_IDS}")
+        sys.stdout.flush()
                                                         ###  Ending Programme  ###
 N_ready+=1
 
 for i in Sockets:
     send_data(Sockets[i], "END")
 
-
 # Fin du code
 while (N_ready<Nmbr_procs):
     continue
-event.set()
-t.join()
+
 print("END.")
 sys.stdout.flush()
+event.set()
+t.join()
+
 
 
 

@@ -25,13 +25,8 @@ class Request:
 
 def time_stop(N):
     start_time=time.time()
-    print("Exchanging")
-    sys.stdout.flush()
     while (time.time()-start_time)//1<N:
         continue
-    print("OK !")
-    sys.stdout.flush()
-
 #                                                    # # #  POLL FUNCTIONS  # # #
 
 def Poll_function(sockets, Machines_Names):
