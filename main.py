@@ -25,7 +25,7 @@ class Node:
         self.PULL_IDS={} # Pulled IDS
         # Interconnections' info
         self.neighbor_sockets = {}  # Neighbors' IPs and ports
-
+        self.neighbor_acc_sock= {}
         # Listening socket and binding
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Listening socket
         self.sock.bind((self.ip, 0))  # bind socket to node id
@@ -64,7 +64,6 @@ def Ending_poll(sockets):
     # Adding sockets
     [pollerObject.register(sockets[i], select.POLLIN | select.POLLHUP) for i in sockets ]
     while True:
-        time.sleep(1)
         if event.is_set():
             break
         fdVsEvent = pollerObject.poll(2)
@@ -89,9 +88,17 @@ def polling_nodes(Node, N_event):
 
     # Adding sockets
     pollerObject.register(listening_sock, select.POLLIN)
-    while True:
-        if N_event.is_set():
-            break
+    for sock_N in Node.neighbor_sockets:
+        pollerObject.register(Node.neighbor_sockets[sock_N], select.POLLIN)
+        Sockets[Node.neighbor_sockets[sock_N].fileno()]=Node.neighbor_sockets[sock_N]
+
+    for sock_N in Node.neighbor_acc_sock:
+        pollerObject.register(Node.neighbor_acc_sock[sock_N], select.POLLIN)
+        Sockets[Node.neighbor_acc_sock[sock_N].fileno()]=Node.neighbor_acc_sock[sock_N]
+    
+    
+    while not N_event.is_set():
+       
         fdVsEvent = pollerObject.poll(2)
         for descriptor, Event in fdVsEvent:
 
@@ -99,13 +106,20 @@ def polling_nodes(Node, N_event):
 
                 Acc_sock, addr=listening_sock.accept()
                 # Adding socket
-                pollerObject.register(Acc_sock, select.POLLIN)
-                Sockets[Acc_sock.fileno()]=Acc_sock
+                Node.neighbor_acc_sock[Acc_sock.fileno()]=Acc_sock
             
             elif listening_sock.fileno()!=descriptor and Event==select.POLLIN:
                 Req=recv_data(Sockets[descriptor],4096)
                 if Req.type==R_type.PUSH:
                     Node.PUSH_IDS[Req.source]=Req.message
+
+                elif Req.type==R_type.PULL_REQ:
+                    continue
+                elif Req.type==R_type.PULL_RES:
+                    continue
+
+    
+
 
 
     
@@ -211,6 +225,32 @@ for i in range (0,n):
         print(e)
 
         sys.stdout.flush()
+                                                    ### ENding threads ###
+
+for t_event in thread_event:
+    t_event.set()
+
+for N_thread in node_threads:
+    N_thread.join()
+
+node_threads=[]
+for i in range (0,n):
+    node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base], thread_event[i],)))
+
+
+# Envoi des informations des noeuds   
+
+for i in range(n):
+    thread_event[i].clear()
+    try :
+        node_threads[i].start()
+    
+    except Exception as e:
+
+        print(e)
+
+        sys.stdout.flush()
+
 
 
                                                       ###  Échange entre noueds  ###
