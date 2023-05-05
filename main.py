@@ -26,6 +26,7 @@ class Node:
         # Interconnections' info
         self.neighbor_sockets = {}  # Neighbors' IPs and ports
         self.neighbor_acc_sock= {}
+        self.neighbor_info = {}
         # Listening socket and binding
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Listening socket
         self.sock.bind((self.ip, 0))  # bind socket to node id
@@ -86,6 +87,8 @@ def polling_nodes(Node, N_event):
     Sockets={}
     pollerObject = select.poll()
 
+
+
     # Adding sockets
     pollerObject.register(listening_sock, select.POLLIN)
     for sock_N in Node.neighbor_sockets:
@@ -107,22 +110,41 @@ def polling_nodes(Node, N_event):
                 Acc_sock, addr=listening_sock.accept()
                 # Adding socket
                 Node.neighbor_acc_sock[Acc_sock.fileno()]=Acc_sock
+
+                Sockets[Acc_sock.fileno()]=Acc_sock
+            
             
             elif listening_sock.fileno()!=descriptor and Event==select.POLLIN:
+                
                 Req=recv_data(Sockets[descriptor],4096)
+                
                 if Req.type==R_type.PUSH:
+
                     Node.PUSH_IDS[Req.source]=Req.message
 
                 elif Req.type==R_type.PULL_REQ:
-                    continue
+                    
+                    view_to_pull = Request(Req.destinataire, Req.source, 2, Node.neighbor_info)
+
+                    send_data(Sockets[descriptor],view_to_pull)
+
+                    # print(Req.message)
+
                 elif Req.type==R_type.PULL_RES:
-                    continue
+                    
+                    for node_id in Req.message:
+                        
+                        Node.PULL_IDS[node_id] = Req.message[node_id]
+                
+                    
+                    
+                    
+                    
+                    
+                    
+                    
 
-    
-
-
-
-    
+                
 
 # Sampling class
 
@@ -185,7 +207,6 @@ thread_event=[]
 for i in range (0,n):
     thread_event.append(threading.Event())
     node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base], thread_event[i],)))
-
 # Envoi des informations des noeuds
 data_to_send=pickle.dumps(Local_Nodes_infos)
 send_data(Orchest_sock, len(data_to_send))
@@ -218,76 +239,92 @@ for i in range (0,n):
 
             neighbour_port = Nodes_infos[neighbor_id][1]
 
+            nodes[i+id_base].neighbor_info[neighbor_id] = [neighbor_ip, neighbour_port]
+
             nodes[i+id_base].neighbor_sockets[neighbor_id] = Gossip_connect(neighbor_ip, neighbour_port)
+
 
     except Exception as e:
 
         print(e)
 
         sys.stdout.flush()
-                                                    ### ENding threads ###
+                                                        ### Ending threads ###
 
 for t_event in thread_event:
     t_event.set()
 
 for N_thread in node_threads:
     N_thread.join()
-
-node_threads=[]
-for i in range (0,n):
-    node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base], thread_event[i],)))
-
-
-# Envoi des informations des noeuds   
-
-for i in range(n):
-    thread_event[i].clear()
-    try :
-        node_threads[i].start()
-    
-    except Exception as e:
-
-        print(e)
-
-        sys.stdout.flush()
+                                                    ### Commencer les communications ###
+for k in range(Rounds):
+    node_threads=[]
+    for i in range (0,n):
+        node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base], thread_event[i],)))
 
 
+    # Envoi des informations des noeuds   
 
-                                                      ###  Échange entre noueds  ###
-
-for Id in nodes:
-    
-    
-    neighbour_samples = random.sample(nodes[Id].Nu, (max_storage//2)+1)
-    
-    
-    for Neighbour_Id in neighbour_samples:
-        try:
-
-            to_send_push=Request(Id, Neighbour_Id, 3, [nodes[Id].ip,nodes[Id].port])
-
+    for i in range(n):
+        thread_event[i].clear()
+        try :
+            node_threads[i].start()
+        
         except Exception as e:
 
             print(e)
 
             sys.stdout.flush()
 
-        send_data(nodes[Id].neighbor_sockets[Neighbour_Id],to_send_push)
 
 
-print("Exchanging")
-sys.stdout.flush()
+                                                        ###  Échange entre noueds  ###
 
-time_stop(5)
+    for Id in nodes:
+        
+        
+        neighbour_samples_push = random.sample(nodes[Id].Nu, (max_storage//2)+1)
+        
+        neighbour_samples_pull = random.sample(nodes[Id].Nu, (max_storage//2)+1)
 
-print("OK !")
-sys.stdout.flush()
 
-for t_event in thread_event:
-    t_event.set()
+        for Neighbour_Id in neighbour_samples_push:
+        
+            to_send_push = Request(Id, Neighbour_Id, 3, [nodes[Id].ip,nodes[Id].port])
 
-for N_thread in node_threads:
-    N_thread.join()
+            send_data(nodes[Id].neighbor_sockets[Neighbour_Id],to_send_push)
+
+        for Neighbour_Id in neighbour_samples_pull:
+
+            to_send_pull = Request(Id, Neighbour_Id, 1, None)
+
+            send_data(nodes[Id].neighbor_sockets[Neighbour_Id], to_send_pull)
+                
+        
+        
+        
+
+            
+            
+
+
+
+    print("Exchanging")
+    sys.stdout.flush()
+
+    time_stop(5)
+
+    print("OK !")
+    sys.stdout.flush()
+
+    for t_event in thread_event:
+        t_event.set()
+
+    for N_thread in node_threads:
+        N_thread.join()
+
+
+
 
 
 if proc_id==0:
@@ -295,6 +332,7 @@ if proc_id==0:
         print(f"View : {nodes[id_base+i].PUSH_IDS}")
         sys.stdout.flush()
                                                         ###  Ending Programme  ###
+
 N_ready+=1
 
 for i in Sockets:
