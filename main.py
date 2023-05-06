@@ -22,7 +22,7 @@ class Node:
         self.id = id   # Node's ID
         self.ip = socket.gethostname()   # Node's IP address
         self.Nu = View  # neighbor list
-        self.Su = []  # sample list
+        self.Hu = []  # historic list
         self.PUSH_IDS=[] # Pushed IDS
         self.PULL_IDS=[] # Pulled IDS
         # Interconnections' info
@@ -120,23 +120,26 @@ def polling_nodes(Node, N_event):
             elif listening_sock.fileno()!=descriptor and Event==select.POLLIN:
                 
                 Req=recv_data(Sockets[descriptor],4096)
-                
-                if Req.type==R_type.PUSH:
+                if Req==None:
+                    continue
+                else :
+                    if Req.type==R_type.PUSH:
 
-                    Node.PUSH_IDS.append(Req.source)
+                        Node.PUSH_IDS.append(Req.source)
 
-                elif Req.type==R_type.PULL_REQ:
+                    elif Req.type==R_type.PULL_REQ:
 
-                    
-                    view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
-
-                    send_data(Sockets[descriptor],view_to_pull)
-
-
-                elif Req.type==R_type.PULL_RES:
                         
-                    Node.PULL_IDS.extend(Req.message)
-                Event=0
+                        view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
+
+                        send_data(Sockets[descriptor],view_to_pull)                
+
+
+                    elif Req.type==R_type.PULL_RES:
+                            
+                        Node.PULL_IDS.extend(Req.message)
+
+                    Event=0
 
                 
                     
@@ -182,6 +185,10 @@ id_base=int(sys.argv[4])
 n=int(sys.argv[5])
 max_storage=int(sys.argv[6])
 Rounds=int(sys.argv[7])
+T_Round=int(sys.argv[9])
+alpha=float(sys.argv[10])
+beta=float(sys.argv[11])
+gamma=float(sys.argv[12])
 
 
                                         ##### Initialisation des connexions #####
@@ -206,8 +213,9 @@ Sockets={peer_conn[rang][1].fileno():peer_conn[rang][1] for rang in peer_conn}
 t=threading.Thread(target=Ending_poll, args=(Sockets,))
 t.start()
 
+
 # Creating and initiaizing nodes
-nodes={id_base+i : Node(max_storage, id_base+i, Nodes_Views[i+id_base]) for i in range(n)}
+nodes={id_base+i : Node(max_storage, id_base+i, Nodes_Views[i+id_base][1]) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
 node_threads=[]
@@ -273,11 +281,10 @@ sys.stdout.flush()
 while(datetime.datetime.now().strftime("%H:%M:%S")!=Launching_time):
     continue
 
-
                                                     ### Commencer les communications ###
 for k in range(Rounds):
     Current_time = datetime.datetime.now() # Temps actuelle
-    Round_ending_time=Current_time+datetime.timedelta(seconds=10) # Temps de fin du round
+    Round_ending_time=Current_time+datetime.timedelta(seconds=T_Round) # Temps de fin du round
     Round_ending_time_F= Round_ending_time.strftime("%H:%M:%S")
     Current_time_F=Current_time.strftime("%H:%M:%S")
     print(" "*15,"<","="*10,f"  Round :{k}  ","="*10,">",f"\nRound beginned at {Current_time_F}  and finishes at {Round_ending_time_F}")
@@ -323,22 +330,17 @@ for k in range(Rounds):
             to_send_pull = Request(Id, Neighbour_Id, 1, None)
 
             send_data(nodes[Id].neighbor_sockets[Neighbour_Id], to_send_pull)
+
+                                                            ### Attendre la fin du round ###
     while(datetime.datetime.now().strftime("%H:%M:%S")!=Round_ending_time_F):
         continue
+
     for t_event in thread_event:
         t_event.set()
 
     for N_thread in node_threads:
         N_thread.join()
-    
 
-
-time_stop(5)
-
-# if proc_id==0:
-#     for i in range(3):
-#         print(f"View : {nodes[id_base+i].PUSH_IDS}")
-#         sys.stdout.flush()
                                                         ###  Ending Programme  ###
 
 N_ready+=1

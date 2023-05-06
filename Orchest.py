@@ -11,6 +11,7 @@ from enum import Enum
 import numpy as np
 import random
 import datetime
+from math import floor, inf
 
 
 class R_type(Enum):
@@ -39,29 +40,61 @@ def find_indices(list_to_check, item_to_find):
 def index_to_ID(Array, id_base):
     return  list(map(lambda x:x+id_base, Array))
 
-def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage):
+def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage, B_percent, T_percent):
     ID_dict={}
     Index=[]
     Machine_Dict=[]
     for i in range(N*Nmbr_proc):
         ID_dict[i+id_base]=[]
         Index.append(0)
+    Ids=list(ID_dict.keys())
+
+    # Noeud byzantin
+    N_byzantine=floor(N*Nmbr_proc*B_percent)
+    ID_byzantine=random.sample(Ids, N_byzantine)
+    for id in ID_byzantine:
+        Index[id-id_base]= inf
+
+    # Noeud de confiance
+    N_Trusted=floor(N*Nmbr_proc*T_percent)
+    ID_Trusted=random.sample(list(set(ID_byzantine)^set(Ids)), N_Trusted)
+
+
+
     for Id in ID_dict:
+        count=0
         while(len(ID_dict[Id])<Max_storage):
             Length_to_fill = Max_storage - len(ID_dict[Id]) # La taille a remplir
-            ind = min(Index) 
+            ind = min(Index)
+            if count!=0:
+                ind+=1
             Indices=find_indices(Index, ind) # Chercher le noeuds qui sont moins présent
             Available_Ids=index_to_ID(Indices, id_base) #ID disponible
-            Available_Ids = list(set(ID_dict[Id]+[Id]) ^ set(Available_Ids)) #ID disponible
+            if Id in Available_Ids:
+                Available_Ids = list(set(ID_dict[Id]+[Id]) ^ set(Available_Ids)) #ID disponible
+            else :
+                Available_Ids = list(set(ID_dict[Id]) ^ set(Available_Ids)) #ID disponible
+            if not Available_Ids:
+                count+=1
             if (Length_to_fill<len(Available_Ids)): # Remplir la vue du noeud
                 Ids_To_Add=random.sample(Available_Ids, Length_to_fill) #Choisir Max_storage ID
-                for i in Ids_To_Add:
-                    Index[i-id_base]+=1
+                if Id not in ID_byzantine:
+                    for i in Ids_To_Add:
+                        Index[i-id_base]+=1
                 ID_dict[Id].extend(Ids_To_Add)
             else:
-                for i in Available_Ids:
-                    Index[i-id_base]+=1
+                if Id not in ID_byzantine:
+                    for i in Available_Ids:
+                        Index[i-id_base]+=1
                 ID_dict[Id].extend(Available_Ids)
+    
+    for id in ID_dict:
+        if id in ID_byzantine:
+            ID_dict[id]=["B",ID_dict[id],ID_byzantine]
+        elif id in ID_Trusted:
+            ID_dict[id]=["T",ID_dict[id]]
+        else:
+            ID_dict[id]=["N",ID_dict[id]]
     for i in range(Nmbr_proc):
         Aux_dict={}
         for j in range(N):
@@ -69,6 +102,7 @@ def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage):
         Machine_Dict.append(Aux_dict)
         id_base+=N
     return Machine_Dict
+
     
 def time_stop(N):
     start_time=time.time()
@@ -149,7 +183,10 @@ def send_data(socket,data):
 
 
 def recv_data(socket,Size):
-    return pickle.loads(socket.recv(Size))
+    data = socket.recv(Size)
+    if not data:
+        return None
+    return pickle.loads(data)
 
                                                 # # # Function d'initialisation # # #
 def Net_init():
@@ -198,8 +235,8 @@ def Net_init():
 
 def main():
     # Verifier les arguments
-    if len(sys.argv)<6:
-        print("Usage : ./Orchest machine_file executable ID_Base N Storage Time_Out...")
+    if len(sys.argv)<14:
+        print("Usage : ./Orchest machine_file executable ID_Base N Storage Rounds T_launch(s) T_Round(s) alpha beta gamma B_percent T_percent")
         exit()
     else:
         Executable=sys.argv[2]
@@ -207,6 +244,9 @@ def main():
         N=int(sys.argv[4])
         max_storage=int(sys.argv[5])
         Rounds=int(sys.argv[6])
+        T_launch=int(sys.argv[7])
+        B_percent=float(sys.argv[12])
+        T_percent=float(sys.argv[13])
         # # Check if we have root privileges
         # if os.geteuid() != 0:
         # # If not, try to elevate privileges
@@ -245,7 +285,7 @@ def main():
 
     # heure et minute déxecution
     now = datetime.datetime.now()
-    Launching_time=now+datetime.timedelta(seconds=10)
+    Launching_time=now+datetime.timedelta(seconds=T_launch)
     now_f=now.strftime("%H:%M:%S")
     Launching_time_f=Launching_time.strftime("%H:%M:%S")
     if Nmbr_procs==0:
@@ -255,7 +295,7 @@ def main():
         print(f"OK\n==> Current time :{now_f}\n==> Launch time :{Launching_time_f}\n==> Rounds : {Rounds}")
     
     # Les vues des noeuds
-    Nodes_Views=Node_Init_Views(id_base, N, Nmbr_procs, max_storage)
+    Nodes_Views=Node_Init_Views(id_base, N, Nmbr_procs, max_storage, B_percent, T_percent)
 
     # Id bases pour distinguer les noeuds de chaque machine
     ids_bases=[]
