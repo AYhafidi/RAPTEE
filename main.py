@@ -9,20 +9,22 @@ import threading
 import select
 import os
 import multiprocessing
+import datetime
+
 
 
           
 class Node:
-    def __init__(self, max_storage, id):
+    def __init__(self, max_storage, id, View):
 
         # Node info
         self.max_storage = max_storage  # maximum storage capacity of node
         self.id = id   # Node's ID
         self.ip = socket.gethostname()   # Node's IP address
-        self.Nu = random.sample(range(id_base-n*proc_id,id_base+n*(Nmbr_procs-proc_id)),max_storage)  # neighbor list
+        self.Nu = View  # neighbor list
         self.Su = []  # sample list
-        self.PUSH_IDS={} # Pushed IDS
-        self.PULL_IDS={} # Pulled IDS
+        self.PUSH_IDS=[] # Pushed IDS
+        self.PULL_IDS=[] # Pulled IDS
         # Interconnections' info
         self.neighbor_sockets = {}  # Neighbors' IPs and ports
         self.neighbor_acc_sock= {}
@@ -63,21 +65,21 @@ def Ending_poll(sockets):
     pollerObject = select.poll()
 
     # Adding sockets
-    [pollerObject.register(sockets[i], select.POLLIN | select.POLLHUP) for i in sockets ]
+    [pollerObject.register(sockets[i], select.POLLIN or select.POLLHUP) for i in sockets ]
     while True:
         if event.is_set():
             break
         fdVsEvent = pollerObject.poll(2)
 
         for descriptor, Event in fdVsEvent:
-            if Event==select.POLLHUP:    
+            if Event==select.POLLHUP:
                 continue
             elif Event==select.POLLIN:
                 data=recv_data(sockets[descriptor], 4096)
-                sys.stdout.flush()
                 if data=="END":
                     N_ready+=1
                 Event=0
+                pollerObject.unregister(sockets[descriptor])
 
     
 
@@ -92,11 +94,11 @@ def polling_nodes(Node, N_event):
     # Adding sockets
     pollerObject.register(listening_sock, select.POLLIN)
     for sock_N in Node.neighbor_sockets:
-        pollerObject.register(Node.neighbor_sockets[sock_N], select.POLLIN)
+        pollerObject.register(Node.neighbor_sockets[sock_N], select.POLLIN or select.POLLHUP)
         Sockets[Node.neighbor_sockets[sock_N].fileno()]=Node.neighbor_sockets[sock_N]
 
     for sock_N in Node.neighbor_acc_sock:
-        pollerObject.register(Node.neighbor_acc_sock[sock_N], select.POLLIN)
+        pollerObject.register(Node.neighbor_acc_sock[sock_N], select.POLLIN or select.POLLHUP)
         Sockets[Node.neighbor_acc_sock[sock_N].fileno()]=Node.neighbor_acc_sock[sock_N]
     
     
@@ -112,7 +114,8 @@ def polling_nodes(Node, N_event):
                 Node.neighbor_acc_sock[Acc_sock.fileno()]=Acc_sock
 
                 Sockets[Acc_sock.fileno()]=Acc_sock
-            
+
+                Event=0
             
             elif listening_sock.fileno()!=descriptor and Event==select.POLLIN:
                 
@@ -120,21 +123,21 @@ def polling_nodes(Node, N_event):
                 
                 if Req.type==R_type.PUSH:
 
-                    Node.PUSH_IDS[Req.source]=Req.message
+                    Node.PUSH_IDS.append(Req.source)
 
                 elif Req.type==R_type.PULL_REQ:
+
                     
-                    view_to_pull = Request(Req.destinataire, Req.source, 2, Node.neighbor_info)
+                    view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
 
                     send_data(Sockets[descriptor],view_to_pull)
 
-                    # print(Req.message)
 
                 elif Req.type==R_type.PULL_RES:
-                    
-                    for node_id in Req.message:
                         
-                        Node.PULL_IDS[node_id] = Req.message[node_id]
+                    Node.PULL_IDS.extend(Req.message)
+                Event=0
+
                 
                     
                     
@@ -174,11 +177,11 @@ class Sampler:
 
 
                                                 ##### Parameters #####
-
-id_base=int(sys.argv[3])
-n=int(sys.argv[4])
-max_storage=int(sys.argv[5])
-Rounds=int(sys.argv[6])
+Launching_time=sys.argv[3]
+id_base=int(sys.argv[4])
+n=int(sys.argv[5])
+max_storage=int(sys.argv[6])
+Rounds=int(sys.argv[7])
 
 
                                         ##### Initialisation des connexions #####
@@ -186,6 +189,15 @@ Rounds=int(sys.argv[6])
 
 Orchest_sock, Nmbr_procs, proc_id, peer_conn=Net_init()
 
+# Recieving dict of Nodes initial views
+    # Recieve the len of the encrypted dict
+length=recv_data(Orchest_sock,4096)
+sys.stdout.flush()
+    # Recieve dict
+data=Orchest_sock.recv(4096)
+while len(data)<length:
+    data+=Orchest_sock.recv(4096)
+Nodes_Views=pickle.loads(data)
 
 # Tableau des sockets
 Sockets={peer_conn[rang][1].fileno():peer_conn[rang][1] for rang in peer_conn}
@@ -194,11 +206,8 @@ Sockets={peer_conn[rang][1].fileno():peer_conn[rang][1] for rang in peer_conn}
 t=threading.Thread(target=Ending_poll, args=(Sockets,))
 t.start()
 
-
-
-
 # Creating and initiaizing nodes
-nodes={id_base+i : Node(max_storage, id_base+i) for i in range(n)}
+nodes={id_base+i : Node(max_storage, id_base+i, Nodes_Views[i+id_base]) for i in range(n)}
 Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
 
 node_threads=[]
@@ -223,6 +232,7 @@ while len(data)<length:
     data+=Orchest_sock.recv(4096)
 Nodes_infos=pickle.loads(data)
 
+sys.stdout.flush()
                                                     ###  Connexion entre noeuds  ###
 
 for i in range (0,n):
@@ -256,8 +266,22 @@ for t_event in thread_event:
 
 for N_thread in node_threads:
     N_thread.join()
+
+                                                       ### Commencer l'échange au même temps ###
+print("[+] Launching...")
+sys.stdout.flush()
+while(datetime.datetime.now().strftime("%H:%M:%S")!=Launching_time):
+    continue
+
+
                                                     ### Commencer les communications ###
 for k in range(Rounds):
+    Current_time = datetime.datetime.now() # Temps actuelle
+    Round_ending_time=Current_time+datetime.timedelta(seconds=10) # Temps de fin du round
+    Round_ending_time_F= Round_ending_time.strftime("%H:%M:%S")
+    Current_time_F=Current_time.strftime("%H:%M:%S")
+    print(" "*15,"<","="*10,f"  Round :{k}  ","="*10,">",f"\nRound beginned at {Current_time_F}  and finishes at {Round_ending_time_F}")
+    sys.stdout.flush()
     node_threads=[]
     for i in range (0,n):
         node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base], thread_event[i],)))
@@ -290,7 +314,7 @@ for k in range(Rounds):
 
         for Neighbour_Id in neighbour_samples_push:
         
-            to_send_push = Request(Id, Neighbour_Id, 3, [nodes[Id].ip,nodes[Id].port])
+            to_send_push = Request(Id, Neighbour_Id, 3, None)
 
             send_data(nodes[Id].neighbor_sockets[Neighbour_Id],to_send_push)
 
@@ -299,38 +323,22 @@ for k in range(Rounds):
             to_send_pull = Request(Id, Neighbour_Id, 1, None)
 
             send_data(nodes[Id].neighbor_sockets[Neighbour_Id], to_send_pull)
-                
-        
-        
-        
-
-            
-            
-
-
-
-    print("Exchanging")
-    sys.stdout.flush()
-
-    time_stop(5)
-
-    print("OK !")
-    sys.stdout.flush()
-
+    while(datetime.datetime.now().strftime("%H:%M:%S")!=Round_ending_time_F):
+        continue
     for t_event in thread_event:
         t_event.set()
 
     for N_thread in node_threads:
         N_thread.join()
+    
 
 
+time_stop(5)
 
-
-
-if proc_id==0:
-    for i in range(3):
-        print(f"View : {nodes[id_base+i].PUSH_IDS}")
-        sys.stdout.flush()
+# if proc_id==0:
+#     for i in range(3):
+#         print(f"View : {nodes[id_base+i].PUSH_IDS}")
+#         sys.stdout.flush()
                                                         ###  Ending Programme  ###
 
 N_ready+=1

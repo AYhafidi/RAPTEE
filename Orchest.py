@@ -8,6 +8,11 @@ import time
 import select
 import threading
 from enum import Enum
+import numpy as np
+import random
+import datetime
+
+
 class R_type(Enum):
 
     AUTHENTIFICATION_REQ = 0
@@ -23,6 +28,48 @@ class Request:
         self.type=R_type(req)
         self.message=message
 
+
+
+
+def find_indices(list_to_check, item_to_find):
+    array = np.array(list_to_check)
+    indices = np.where(array == item_to_find)[0]
+    return list(indices)
+
+def index_to_ID(Array, id_base):
+    return  list(map(lambda x:x+id_base, Array))
+
+def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage):
+    ID_dict={}
+    Index=[]
+    Machine_Dict=[]
+    for i in range(N*Nmbr_proc):
+        ID_dict[i+id_base]=[]
+        Index.append(0)
+    for Id in ID_dict:
+        while(len(ID_dict[Id])<Max_storage):
+            Length_to_fill = Max_storage - len(ID_dict[Id]) # La taille a remplir
+            ind = min(Index) 
+            Indices=find_indices(Index, ind) # Chercher le noeuds qui sont moins présent
+            Available_Ids=index_to_ID(Indices, id_base) #ID disponible
+            Available_Ids = list(set(ID_dict[Id]+[Id]) ^ set(Available_Ids)) #ID disponible
+            if (Length_to_fill<len(Available_Ids)): # Remplir la vue du noeud
+                Ids_To_Add=random.sample(Available_Ids, Length_to_fill) #Choisir Max_storage ID
+                for i in Ids_To_Add:
+                    Index[i-id_base]+=1
+                ID_dict[Id].extend(Ids_To_Add)
+            else:
+                for i in Available_Ids:
+                    Index[i-id_base]+=1
+                ID_dict[Id].extend(Available_Ids)
+    for i in range(Nmbr_proc):
+        Aux_dict={}
+        for j in range(N):
+            Aux_dict[j+id_base]=ID_dict[j+id_base]
+        Machine_Dict.append(Aux_dict)
+        id_base+=N
+    return Machine_Dict
+    
 def time_stop(N):
     start_time=time.time()
     while (time.time()-start_time)//1<N:
@@ -156,10 +203,10 @@ def main():
         exit()
     else:
         Executable=sys.argv[2]
-        id_base=sys.argv[3]
-        N=sys.argv[4]
-        max_storage=sys.argv[5]
-        Rounds=sys.argv[6]
+        id_base=int(sys.argv[3])
+        N=int(sys.argv[4])
+        max_storage=int(sys.argv[5])
+        Rounds=int(sys.argv[6])
         # # Check if we have root privileges
         # if os.geteuid() != 0:
         # # If not, try to elevate privileges
@@ -195,11 +242,20 @@ def main():
             print("☆ ",end="")
     # Le nombre des machines disponible
     Nmbr_procs=len(Machine_Dispo)
+
+    # heure et minute déxecution
+    now = datetime.datetime.now()
+    Launching_time=now+datetime.timedelta(seconds=10)
+    now_f=now.strftime("%H:%M:%S")
+    Launching_time_f=Launching_time.strftime("%H:%M:%S")
     if Nmbr_procs==0:
         print("\nThere are no machines to run the script on")
         exit(1)
     else :
-        print(f"OK ({Rounds} Rounds)")
+        print(f"OK\n==> Current time :{now_f}\n==> Launch time :{Launching_time_f}\n==> Rounds : {Rounds}")
+    
+    # Les vues des noeuds
+    Nodes_Views=Node_Init_Views(id_base, N, Nmbr_procs, max_storage)
 
     # Id bases pour distinguer les noeuds de chaque machine
     ids_bases=[]
@@ -223,7 +279,7 @@ def main():
         #Liste des arguments
         OutpipeR ,OutpipeW=os.pipe()
         ErrpipeR ,ErrpipeW=os.pipe()
-        Args=["ssh",Machine_Dispo[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port)]+[str(ids_bases[i])]+sys.argv[4:]
+        Args=["ssh",Machine_Dispo[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port),Launching_time_f]+[str(ids_bases[i])]+sys.argv[4:]
         pid=os.fork()
         if pid==0:
             # Redirection des tubes
@@ -259,6 +315,14 @@ def main():
     for i in range(Nmbr_procs):
         send_data(sockets[i],[Nmbr_procs,i,machine_dict])
         Node_info_threads.append(threading.Thread(target=Nodes_info_recv, args=(sockets[i], Nodes_infos,)))
+
+    # Sending nodes initial views
+    for i in range(Nmbr_procs):
+        data_to_send=pickle.dumps(Nodes_Views[i])
+        send_data(sockets[i],len(data_to_send))
+    time_stop(2) #attendre 1 secondes 
+    for i in range(Nmbr_procs):
+        send_data(sockets[i], Nodes_Views[i])
 
     # Lancer les threads pour récupérer les informations des noeuds
     for i in range(Nmbr_procs):
