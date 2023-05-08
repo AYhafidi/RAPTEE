@@ -10,21 +10,23 @@ import select
 import os
 import multiprocessing
 import datetime
+import json
+
 
 
 
           
 class Node:
-    def __init__(self, max_storage, id, View):
+    def __init__(self, id, View):
 
         # Node info
-        self.max_storage = max_storage  # maximum storage capacity of node
         self.id = id   # Node's ID
         self.ip = socket.gethostname()   # Node's IP address
         self.Nu = View  # neighbor list
         self.Hu = []  # historic list
         self.PUSH_IDS=[] # Pushed IDS
         self.PULL_IDS=[] # Pulled IDS
+        self.Public_key=[]
         # Interconnections' info
         self.neighbor_sockets = {}  # Neighbors' IPs and ports
         self.neighbor_acc_sock= {}
@@ -36,17 +38,33 @@ class Node:
         self.sock.listen(n)  # listen for incoming connections
         #print("Node", self.id, "listening on port", self.port)
 
+    def get_Nu(self):
+        return self.Nu
+    
+    def get_Hu(self):
+        return self.Hu
+
     def get_Nui(self, i):
         if i < len(self.Nu):
             return self.Nu[i]
         else:
             return None
 
-    def get_Sui(self, i):
-        if i < len(self.Su):
-            return self.Su[i]
+    def get_Hui(self, i):
+        if i < len(self.Hu):
+            return self.Hu[i]
         else:
             return None
+
+class Trusted(Node):
+    def __init__(self, id, View, Key):
+        super().__init__(id, View)
+        self.Private_key=Key
+
+class Byzantine(Node):
+    def __init__(self, id, View, B_ids):
+        super().__init__(id, View)
+        self.B_ids=B_ids # ID des autres noeuds byzantin
 
 
     def update_neighbor_list(self, Nu_t):
@@ -129,8 +147,10 @@ def polling_nodes(Node, N_event):
 
                     elif Req.type==R_type.PULL_REQ:
 
-                        
-                        view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
+                        if Node.__class__.__name__==Byzantine:
+                            view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
+                        else:
+                            view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
 
                         send_data(Sockets[descriptor],view_to_pull)                
 
@@ -213,11 +233,20 @@ Sockets={peer_conn[rang][1].fileno():peer_conn[rang][1] for rang in peer_conn}
 t=threading.Thread(target=Ending_poll, args=(Sockets,))
 t.start()
 
-
+nodes={}
+Local_Nodes_infos={}
 # Creating and initiaizing nodes
-nodes={id_base+i : Node(max_storage, id_base+i, Nodes_Views[i+id_base][1]) for i in range(n)}
-Local_Nodes_infos={Id:[nodes[Id].ip, nodes[Id].port] for Id in nodes}
+for i in range(n):
+    Id=i+id_base
+    if Nodes_Views[Id][0]=="B":
+        nodes[Id]=Byzantine(Id, Nodes_Views[Id][1], Nodes_Views[Id][1])
 
+    elif Nodes_Views[Id][0]=="T":
+        nodes[Id]=Trusted(Id, Nodes_Views[Id][1], 0)
+    else :
+        nodes[Id]=Node(Id, Nodes_Views[Id][1])
+    Local_Nodes_infos[Id]=[nodes[Id].ip, nodes[Id].port]
+    
 node_threads=[]
 thread_event=[]
 
@@ -274,6 +303,8 @@ for t_event in thread_event:
 
 for N_thread in node_threads:
     N_thread.join()
+
+Data={k:{id:{"View":[],"History":[]} for id in nodes} for k in range(Rounds)}
 
                                                        ### Commencer l'échange au même temps ###
 print("[+] Launching...")
@@ -340,7 +371,17 @@ for k in range(Rounds):
 
     for N_thread in node_threads:
         N_thread.join()
+    
+    for id in nodes:
+        Data[k][id]["View"]=nodes[id].get_Nu()
+        Data[k][id]["History"]=nodes[id].get_Hu()
 
+
+                                                        ### Sending data to Orchestrator ###
+# Envoi des informations des noeuds
+data_to_send=pickle.dumps(Data)
+send_data(Orchest_sock, len(data_to_send))
+send_data(Orchest_sock, Data)
                                                         ###  Ending Programme  ###
 
 N_ready+=1

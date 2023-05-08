@@ -12,7 +12,7 @@ import numpy as np
 import random
 import datetime
 from math import floor, inf
-
+from os.path import exists
 
 class R_type(Enum):
 
@@ -148,6 +148,31 @@ def Poll_function(sockets, Machines_Names):
 
                                                     # # # <---  Functions ---> # # #
 
+def Data_analyser(Data, Ids, ID_byzantine, Rounds, max_storage):
+    IDs_to_check = list(set(Ids) ^ set(ID_byzantine))
+    N_normal_nodes = len(IDs_to_check)
+    Count_byzantine = 0.0 # Nombre of byzantine nodes in the views
+    discovery_percent = 0.75 # Discovery percentage
+    time_to_discovery = 0 #Time to discover 75% of non byzantine nodes
+                                        ##  Count time to discovery ##
+    for id in IDs_to_check:
+        Ids_dicovered=[]
+        for k in range(1, Rounds+1):
+            Ids_dicovered=list(set(Ids_dicovered) ^ set(check_elemnt_in(Data[k][id]["View"], ID_byzantine)))
+            if (float(len(Ids_dicovered))/N_normal_nodes)>discovery_percent:
+                if k>time_to_discovery:
+                    time_to_discovery=k
+                continue
+                                        ## Percentage of Byzantine IDs in the views of correct nodes ##
+    for k in range(1, Rounds+1):
+        aux=0
+        for id in IDs_to_check:
+            ID_N=len(check_elemnt_in(Data[k][id]["View"], ID_byzantine))
+            aux += max_storage-ID_N
+        if aux>Count_byzantine:
+            Count_byzantine=aux
+    return Count_byzantine/(len(Ids)*max_storage), time_to_discovery
+
 def Nodes_info_recv(socket, Nodes_infos):
 
     # Recieve the len of the dict chiffré
@@ -158,6 +183,16 @@ def Nodes_info_recv(socket, Nodes_infos):
         data+=socket.recv(4096)
     Nodes_infos.update(pickle.loads(data))
 
+def Data_recv(socket, Data):
+    # Recieve the len of the dict chiffré
+    length=recv_data(socket,4096)
+    # Recieve the dict
+    data=socket.recv(4096)
+    while len(data)<length:
+        data+=socket.recv(4096)
+    aux_dict=pickle.loads(data)
+    for k in Data:
+        Data[k].update(aux_dict[k])
 
 def Listening_socket(IP,Port,N):
     # Créer une socket d'écoute
@@ -282,7 +317,6 @@ def main():
             print("☆ ",end="")
     # Le nombre des machines disponible
     Nmbr_procs=len(Machine_Dispo)
-
     # heure et minute déxecution
     now = datetime.datetime.now()
     Launching_time=now+datetime.timedelta(seconds=T_launch)
@@ -335,12 +369,15 @@ def main():
             os.close(ErrpipeW)
             fd_Pipes.append(OutpipeR)
             fd_Pipes.append(ErrpipeR)
-
+    # Fonction poll
+    t=threading.Thread(target=Poll_function, args=(fd_Pipes, Machine_Dispo,))
+    t.start()
     #Node_info threads
     Node_info_threads=[]
-
+    Data_threads=[]
     # dict containing nodes infos
     Nodes_infos={}
+    Data={k:{} for k in range(Rounds)}
     # Accepter les connexions
     for i in range(Nmbr_procs):
         sock_accept,addr=serversocket.accept()
@@ -355,12 +392,13 @@ def main():
     for i in range(Nmbr_procs):
         send_data(sockets[i],[Nmbr_procs,i,machine_dict])
         Node_info_threads.append(threading.Thread(target=Nodes_info_recv, args=(sockets[i], Nodes_infos,)))
+        Data_threads.append(threading.Thread(target=Data_recv, args=(sockets[i], Data,)))
 
     # Sending nodes initial views
     for i in range(Nmbr_procs):
         data_to_send=pickle.dumps(Nodes_Views[i])
         send_data(sockets[i],len(data_to_send))
-    time_stop(2) #attendre 1 secondes 
+    time_stop(2) #attendre 2 secondes 
     for i in range(Nmbr_procs):
         send_data(sockets[i], Nodes_Views[i])
 
@@ -377,8 +415,18 @@ def main():
         send_data(sockets[i], len(data_to_send))
         send_data(sockets[i], Nodes_infos)
 
-    # Fonction poll
-    Poll_function(fd_Pipes, Machine_Dispo)
+    # Lancer les threads pour récupérer Data des échanges
+    for i in range(Nmbr_procs):
+        Data_threads[i].start()
 
+    for i in range(Nmbr_procs):
+        Data_threads[i].join()
+    
+    # Analyse des données
+    
+    # attendre la fonction poll
+    t.join()
+
+    
 if __name__ == '__main__':
     main()
