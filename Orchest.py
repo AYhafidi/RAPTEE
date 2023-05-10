@@ -20,6 +20,7 @@ class R_type(Enum):
     PULL_REQ = 1
     PULL_RES = 2
     PUSH = 3
+    AUTHENTIFICATION_RES = 4
 
 
 class Request:
@@ -30,6 +31,12 @@ class Request:
         self.message=message
 
 
+def time_span(sec):
+    Current_time = datetime.datetime.now() # Temps actuelle
+    Round_ending_time=Current_time+datetime.timedelta(seconds=sec) # Temps de fin du round
+    Round_ending_time_F= Round_ending_time.strftime("%H:%M:%S")
+    Current_time_F=Current_time.strftime("%H:%M:%S")
+    return Current_time_F, Round_ending_time_F
 
 
 def find_indices(list_to_check, item_to_find):
@@ -101,7 +108,7 @@ def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage, B_percent, T_percent):
             Aux_dict[j+id_base]=ID_dict[j+id_base]
         Machine_Dict.append(Aux_dict)
         id_base+=N
-    return Machine_Dict
+    return Machine_Dict, Ids, ID_byzantine
 
     
 def time_stop(N):
@@ -148,7 +155,15 @@ def Poll_function(sockets, Machines_Names):
 
                                                     # # # <---  Functions ---> # # #
 
-def Data_analyser(Data, Ids, ID_byzantine, Rounds, max_storage):
+def check_elemnt_in(Array1, Array2): #remove elements in Array1 if they are in Array2
+    Array=[]
+    for i in Array1:
+        if not i in Array2:
+            Array.append(i)
+    return Array
+
+
+def Data_analyser(Data, Ids, ID_byzantine, Rounds, L1):
     IDs_to_check = list(set(Ids) ^ set(ID_byzantine))
     N_normal_nodes = len(IDs_to_check)
     Count_byzantine = 0.0 # Nombre of byzantine nodes in the views
@@ -168,10 +183,10 @@ def Data_analyser(Data, Ids, ID_byzantine, Rounds, max_storage):
         aux=0
         for id in IDs_to_check:
             ID_N=len(check_elemnt_in(Data[k][id]["View"], ID_byzantine))
-            aux += max_storage-ID_N
+            aux += L1 - ID_N
         if aux>Count_byzantine:
             Count_byzantine=aux
-    return Count_byzantine/(len(Ids)*max_storage), time_to_discovery
+    return Count_byzantine/(len(Ids)*L1), time_to_discovery
 
 def Nodes_info_recv(socket, Nodes_infos):
 
@@ -270,18 +285,19 @@ def Net_init():
 
 def main():
     # Verifier les arguments
-    if len(sys.argv)<14:
-        print("Usage : ./Orchest machine_file executable ID_Base N Storage Rounds T_launch(s) T_Round(s) alpha beta gamma B_percent T_percent")
+    if len(sys.argv)<15:
+        print("Usage : ./Orchest machine_file executable ID_Base N L1 L2 Rounds T_launch(s) T_Round(s) alpha beta gamma B_percent T_percent")
         exit()
     else:
         Executable=sys.argv[2]
         id_base=int(sys.argv[3])
         N=int(sys.argv[4])
-        max_storage=int(sys.argv[5])
-        Rounds=int(sys.argv[6])
-        T_launch=int(sys.argv[7])
-        B_percent=float(sys.argv[12])
-        T_percent=float(sys.argv[13])
+        L1=int(sys.argv[5])
+        L2=int(sys.argv[6])
+        Rounds=int(sys.argv[7])
+        T_launch=int(sys.argv[8])
+        B_percent=float(sys.argv[13])
+        T_percent=float(sys.argv[14])
         # # Check if we have root privileges
         # if os.geteuid() != 0:
         # # If not, try to elevate privileges
@@ -318,10 +334,7 @@ def main():
     # Le nombre des machines disponible
     Nmbr_procs=len(Machine_Dispo)
     # heure et minute déxecution
-    now = datetime.datetime.now()
-    Launching_time=now+datetime.timedelta(seconds=T_launch)
-    now_f=now.strftime("%H:%M:%S")
-    Launching_time_f=Launching_time.strftime("%H:%M:%S")
+    now_f, Launching_time_f=time_span(T_launch)
     if Nmbr_procs==0:
         print("\nThere are no machines to run the script on")
         exit(1)
@@ -329,7 +342,7 @@ def main():
         print(f"OK\n==> Current time :{now_f}\n==> Launch time :{Launching_time_f}\n==> Rounds : {Rounds}")
     
     # Les vues des noeuds
-    Nodes_Views=Node_Init_Views(id_base, N, Nmbr_procs, max_storage, B_percent, T_percent)
+    Nodes_Views, Ids, ID_byzantine=Node_Init_Views(id_base, N, Nmbr_procs, L1, B_percent, T_percent)
 
     # Id bases pour distinguer les noeuds de chaque machine
     ids_bases=[]
@@ -377,7 +390,7 @@ def main():
     Data_threads=[]
     # dict containing nodes infos
     Nodes_infos={}
-    Data={k:{} for k in range(Rounds)}
+    Data={k:{} for k in range(1, Rounds+1)}
     # Accepter les connexions
     for i in range(Nmbr_procs):
         sock_accept,addr=serversocket.accept()
@@ -421,9 +434,11 @@ def main():
 
     for i in range(Nmbr_procs):
         Data_threads[i].join()
-    
+
     # Analyse des données
-    
+
+    print(Data_analyser(Data, Ids, ID_byzantine, Rounds, L1))
+
     # attendre la fonction poll
     t.join()
 
