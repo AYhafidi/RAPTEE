@@ -14,7 +14,21 @@ import json
 import hashlib
 import secrets
 from sampler import *
+import inspect
 
+
+
+
+
+def print_open_fds(print_all=False):
+    descriptors = set()
+    (frame, filename, line_number, function_name, lines, index) = inspect.getouterframes(inspect.currentframe())[1]
+    fds = set(os.listdir('/proc/self/fd/'))
+    new_fds = fds - descriptors
+    closed_fds = descriptors - fds
+    descriptors = fds
+    return len(descriptors)
+    
 
 
 class Node:
@@ -27,6 +41,8 @@ class Node:
         self.ip = socket.gethostname()   # Node's IP address
         self.Nu = View  # neighbor list
         self.Su = random.sample(View, L2)  # sample list
+        self.PUSH_To=[] # Send push to these nodes
+        self.PULL_To=[] # Send pull to these nodes
         self.PUSH_IDS=[] # Pushed IDS
         self.PULL_IDS=[] # Pulled IDS
         self.Public_key=[]
@@ -44,6 +60,8 @@ class Node:
         try : 
             self.PUSH_IDS=[]
             self.PULL_IDS=[]
+            self.PULL_To=[]
+            self.PUSH_To=[]
             for i in self.neighbor_sockets:
                 self.neighbor_sockets[i].close()
             for i in self.neighbor_acc_sock:
@@ -92,7 +110,7 @@ class Byzantine(Node):
         self.B_ids=B_ids # ID des autres noeuds byzantin
 
 
-def Connecting_nodes(nodes, Nodes_infos, n, L1):
+def Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha):
     node_threads=[]
     thread_event=[]
     for i in range (0,n):
@@ -107,8 +125,10 @@ def Connecting_nodes(nodes, Nodes_infos, n, L1):
         node_threads[i].start()
     
     for i in range (0,n):
+        nodes[i+id_base].PUSH_To=random.sample(nodes[i+id_base].Nu, int(alpha*L1))
+        nodes[i+id_base].PULL_To=random.sample(nodes[i+id_base].Nu, int(beta*L1))
         try:
-            for id in set(nodes[i+id_base].Nu):
+            for id in set(nodes[i+id_base].PUSH_To + nodes[i+id_base].PULL_To):
 
                 
                 neighbor_ip = Nodes_infos[id][0]
@@ -121,9 +141,9 @@ def Connecting_nodes(nodes, Nodes_infos, n, L1):
         except Exception as e:
 
             print(e)
-
             sys.stdout.flush()
-    time_stop(10)
+
+    time_stop(5)
                                                             ### Ending threads ###
     for t_event in thread_event:
         t_event.set()
@@ -310,12 +330,10 @@ def polling_nodes(Node, N_event):
 
                             send_data(Sockets[descriptor],view_to_pull)
 
-                            # print('YEEEEEEEEEEEEEEEES')
 
 
 
                         else:
-                            # print('NOOOOOOOOOOOOOOOOOOOOOO')
                             if Node.__class__.__name__==Byzantine:
                                 view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
                             else:
@@ -337,8 +355,8 @@ def polling_nodes(Node, N_event):
 
                 
 def Nodes_comunication(node):
-    neighbour_samples_push = node.Nu
-    neighbour_samples_pull = node.Nu
+    neighbour_samples_push = node.PUSH_To
+    neighbour_samples_pull = node.PULL_To
 
     for Neighbour_Id in neighbour_samples_push:
         sys.stdout.flush()
@@ -439,7 +457,9 @@ while len(data)<length:
 Nodes_infos=pickle.loads(data)
                                                     ###  Connexion entre noeuds  ###
 
-nodes=Connecting_nodes(nodes, Nodes_infos, n, L1)
+nodes=Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha)
+
+
 # for id in nodes:
 #     if Nodes_Views[id][0]!="B":
 #         Acc_len=len(list(nodes[id].neighbor_acc_sock.keys()))
@@ -461,7 +481,7 @@ while(datetime.datetime.now().strftime("%H:%M:%S")!=Launching_time):
 
 for k in range(1, Rounds+1):
     Current_time_F, Round_ending_time_F = time_span(T_Round)
-    print(" "*15,"<","="*10,f"  Round :{k}  ","="*10,">",f"\nRound beginned at {Current_time_F}  and finishes at {Round_ending_time_F}")
+    print(" "*15,"<","="*10,f"  Round :{k}, Nmbr of opened fd : {print_open_fds()} ","="*10,">",f"\nRound beginned at {Current_time_F}  and finishes at {Round_ending_time_F}")
     sys.stdout.flush()
     node_threads=[]
     nodes_comunication_threads=[]
@@ -509,7 +529,10 @@ for k in range(1, Rounds+1):
 
     for id in nodes:
         if Nodes_Views[id][0]!="B":
-            
+            if not nodes[id].PUSH_IDS:
+                print("didn't recieve any push")
+                sys.stdout.flush()
+
             try:
                 Sample=l2_sampler(nodes[id].get_Su(), int(gamma*nodes[id].L1))
             except Exception as e:
@@ -536,17 +559,15 @@ for k in range(1, Rounds+1):
             
 
                 
-            nodes[id].round_reset()
+            try:
+                nodes[id].round_reset()
+            except Exception as e:
+                print(e)
+                sys.stdout.flush()
 
-    if k<=Round:
-        nodes=Connecting_nodes(nodes, Nodes_infos, n, L1)
-    # for id in nodes:
-    #     if Nodes_Views[id][0]!="B":
-    #         Acc_len=len(list(nodes[id].neighbor_acc_sock.keys()))
-    #         conn_len=len(list(nodes[id].neighbor_sockets.keys()))
-    #         if conn_len<L1:
-    #             print(f"\n[ {id} ] connected to :{conn_len}, View : {nodes[id].get_Nu()}")
-    #             sys.stdout.flush()
+    if k<Rounds:
+        nodes=Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha)
+
 
                                                         ### Sending data to Orchestrator ###
 # Envoi des informations des noeuds
@@ -554,7 +575,8 @@ data_to_send=pickle.dumps(Data)
 send_data(Orchest_sock, len(data_to_send))
 send_data(Orchest_sock, Data)
                                                         ###  Ending Programme  ###
-
+print(f"End, Opened fd : {print_open_fds()}")
+sys.stdout.flush()
 N_ready+=1
 
 for i in Sockets:
