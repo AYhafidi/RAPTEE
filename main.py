@@ -69,7 +69,7 @@ class Node:
             self.neighbor_sockets = {}
             self.neighbor_acc_sock= {}
         except Exception as e:
-            print(e)
+            print("Reset : ", e)
             sys.stdout.flush()
 
     def get_Nu(self):
@@ -110,7 +110,7 @@ class Byzantine(Node):
         self.B_ids=B_ids # ID des autres noeuds byzantin
 
 
-def Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha):
+def Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha, End_time):
     node_threads=[]
     thread_event=[]
     for i in range (0,n):
@@ -118,7 +118,7 @@ def Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha):
             thread_event.append(threading.Event())
             node_threads.append(threading.Thread(target=polling_nodes, args=(nodes[i+id_base], thread_event[i],)))
         except Exception as e:
-            print(e)
+            print(" Conencting threads [1]:", e)
             sys.stdout.flush()
     # Envoi des informations des noeuds
     for i in range(n):
@@ -139,11 +139,10 @@ def Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha):
 
 
         except Exception as e:
-
-            print(e)
+            print(" Conencting threads [2]:", e)
             sys.stdout.flush()
 
-    time_stop(5)
+    wait_time(End_time)
                                                             ### Ending threads ###
     for t_event in thread_event:
         t_event.set()
@@ -365,7 +364,7 @@ def Nodes_comunication(node):
         try:
             send_data(node.neighbor_sockets[Neighbour_Id],to_send_push)
         except Exception as e:
-            print(e)
+            print(" Nodes communication [1]:", e)
             sys.stdout.flush()
     
     time_stop(2)
@@ -376,7 +375,7 @@ def Nodes_comunication(node):
         try:
             send_data(node.neighbor_sockets[Neighbour_Id], to_send_pull)
         except Exception as e:
-            print(e)
+            print(" Nodes communication [2]:", e)
             sys.stdout.flush()
 
                     
@@ -395,12 +394,14 @@ id_base=int(sys.argv[4])
 n=int(sys.argv[5])
 L1=int(sys.argv[6])
 L2=int(sys.argv[7])
-sys.stdout.flush()
 Rounds=int(sys.argv[8])
-T_Round=int(sys.argv[10])
-alpha=float(sys.argv[11])
-beta=float(sys.argv[12])
-gamma=float(sys.argv[13])
+T_Round=int(sys.argv[9])
+update_time=int(sys.argv[10])
+connection_time=int(sys.argv[11])
+alpha=float(sys.argv[12])
+beta=float(sys.argv[13])
+gamma=float(sys.argv[14])
+
 
 
                                         ##### Initialisation des connexions #####
@@ -411,12 +412,13 @@ Orchest_sock, Nmbr_procs, proc_id, peer_conn=Net_init()
 # Recieving dict of Nodes initial views
     # Recieve the len of the encrypted dict
 length=recv_data(Orchest_sock,4096)
-sys.stdout.flush()
+
     # Recieve dict
 data=Orchest_sock.recv(4096)
 while len(data)<length:
     data+=Orchest_sock.recv(4096)
 Nodes_Views=pickle.loads(data)
+
 
 # Tableau des sockets
 Sockets={peer_conn[rang][1].fileno():peer_conn[rang][1] for rang in peer_conn}
@@ -445,27 +447,24 @@ data_to_send=pickle.dumps(Local_Nodes_infos)
 send_data(Orchest_sock, len(data_to_send))
 send_data(Orchest_sock, Local_Nodes_infos)
 
-
 # Recieve the len of the encrypted dict
 length=recv_data(Orchest_sock,4096)
-
 # Recieve the dict
+
+
 
 data=Orchest_sock.recv(4096)
 while len(data)<length:
     data+=Orchest_sock.recv(4096)
 Nodes_infos=pickle.loads(data)
+
                                                     ###  Connexion entre noeuds  ###
 
-nodes=Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha)
+T_end_connection=datetime.datetime.now()+datetime.timedelta(seconds=connection_time) # Temps de fin du round
+nodes=Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha, T_end_connection.strftime("%H:%M:%S"))
 
 
-# for id in nodes:
-#     if Nodes_Views[id][0]!="B":
-#         Acc_len=len(list(nodes[id].neighbor_acc_sock.keys()))
-#         conn_len=len(list(nodes[id].neighbor_sockets.keys()))
-#         print(f"\n[ {id} ] connected to :{conn_len}, Accepted : {Acc_len}")
-#         sys.stdout.flush()
+                                      
 
 # DATA dict
 Data={k:{id:{"View":[],"Sample":[]} for id in nodes} for k in range(1, Rounds+1)}
@@ -474,14 +473,13 @@ Comm_event=[threading.Event() for i in range(n)]
                                                        ### Commencer l'échange au même temps ###
 print("[+] Launching...")
 sys.stdout.flush()
-while(datetime.datetime.now().strftime("%H:%M:%S")!=Launching_time):
-    continue
+wait_time(Launching_time)
 
                                                     ### Commencer les communications ###
 
 for k in range(1, Rounds+1):
-    Current_time_F, Round_ending_time_F = time_span(T_Round)
-    print(" "*15,"<","="*10,f"  Round :{k}, Nmbr of opened fd : {print_open_fds()} ","="*10,">",f"\nRound beginned at {Current_time_F}  and finishes at {Round_ending_time_F}")
+    Current_time_F, Round_ending_time_F, Update_ending_time_F, Connection_ending_time_F = time_span(T_Round, update_time, connection_time)
+    print(" "*15,"<","="*10,f"  Round :{k}, Nmbr of opened fd : {print_open_fds()} ","="*10,">",f"\n Round beginning : {Current_time_F}, T_comm: {Round_ending_time_F}, T_u : {Update_ending_time_F}, T_c : {Connection_ending_time_F} ")
     sys.stdout.flush()
     node_threads=[]
     nodes_comunication_threads=[]
@@ -499,7 +497,7 @@ for k in range(1, Rounds+1):
         
         except Exception as e:
 
-            print(e)
+            print("Communication [1] :", e)
             sys.stdout.flush()
 
 
@@ -516,9 +514,8 @@ for k in range(1, Rounds+1):
 
                                                             ### Attendre la fin du round ###
 
-    while(datetime.datetime.now().strftime("%H:%M:%S")!=Round_ending_time_F):
-        continue
-
+    wait_time(Round_ending_time_F)
+    
     for t_event in Comm_event:
         t_event.set()
 
@@ -532,17 +529,18 @@ for k in range(1, Rounds+1):
             if not nodes[id].PUSH_IDS:
                 print("didn't recieve any push")
                 sys.stdout.flush()
+                continue
 
             try:
                 Sample=l2_sampler(nodes[id].get_Su(), int(gamma*nodes[id].L1))
             except Exception as e:
-                print(e)
+                print("Sample : " , e)
                 sys.stdout.flush()
             
             try:
                 View_update=l2_sampler(nodes[id].PULL_IDS, int(beta*L1))+l2_sampler(nodes[id].PUSH_IDS, int(alpha*L1))
             except Exception as e:
-                print(e)
+                print("PUSH U PULL :", e)
                 sys.stdout.flush()
             
 
@@ -554,7 +552,7 @@ for k in range(1, Rounds+1):
                 Data[k][id]["View"]=nodes[id].get_Nu()
                 Data[k][id]["Sample"]=nodes[id].get_Su()
             except Exception as e:
-                print(e)
+                print("Update :", e)
                 sys.stdout.flush()
             
 
@@ -562,11 +560,20 @@ for k in range(1, Rounds+1):
             try:
                 nodes[id].round_reset()
             except Exception as e:
-                print(e)
+                print("Reseting [1]:", e)
                 sys.stdout.flush()
+        else:
+            try:
+                nodes[id].round_reset()
+            except Exception as e:
+                print("Reseting [2]:", e)
+                sys.stdout.flush()
+                
+    #Wait update
+    wait_time(Round_ending_time_F)
 
     if k<Rounds:
-        nodes=Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha)
+        nodes=Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha, Connection_ending_time_F)
 
 
                                                         ### Sending data to Orchestrator ###

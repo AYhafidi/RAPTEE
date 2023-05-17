@@ -31,14 +31,24 @@ class Request:
         self.message=message
 
 
-def time_span(sec):
+def time_span(T_r, T_u, T_c):
     Current_time = datetime.datetime.now() # Temps actuelle
-    Round_ending_time=Current_time+datetime.timedelta(seconds=sec) # Temps de fin du round
-    Round_ending_time_F= Round_ending_time.strftime("%H:%M:%S")
+    Round_ending_time=Current_time+datetime.timedelta(seconds=T_r) # Temps de fin du round
+    Update_ending_time=Round_ending_time+datetime.timedelta(seconds=T_u) # Temps de fin du update
+    Connection_ending_time=Update_ending_time+datetime.timedelta(seconds=T_c) # Temps de fin du connection
+    
     Current_time_F=Current_time.strftime("%H:%M:%S")
-    return Current_time_F, Round_ending_time_F
+    Round_ending_time_F= Round_ending_time.strftime("%H:%M:%S")
+    Update_ending_time_F= Update_ending_time.strftime("%H:%M:%S")
+    Connection_ending_time_F= Connection_ending_time.strftime("%H:%M:%S")
+    
+    return Current_time_F, Round_ending_time_F, Update_ending_time_F, Connection_ending_time_F
 
+def wait_time(Ending_time):
+    while(datetime.datetime.now().strftime("%H:%M:%S")!=Ending_time):
+        continue
 
+    
 def find_indices(list_to_check, item_to_find):
     array = np.array(list_to_check)
     indices = np.where(array == item_to_find)[0]
@@ -56,9 +66,18 @@ def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage, B_percent, T_percent):
         Index.append(0)
     Ids=list(ID_dict.keys())
 
+
     # Noeud byzantin
     N_byzantine=floor(N*Nmbr_proc*B_percent)
-    ID_byzantine=random.sample(Ids, N_byzantine)
+    ID_byzantine=[]
+    while len(ID_byzantine)<N_byzantine:
+        for i in range(Nmbr_proc):
+            Machine_Ids=check_elemnt_in(Ids[i*N:(i+1)*N], ID_byzantine)
+            ID=random.sample(Machine_Ids, 1)[0]
+            ID_byzantine.append(ID)
+            if len(ID_byzantine)==N_byzantine:
+                break
+
     for id in ID_byzantine:
         Index[id-id_base]= inf
 
@@ -192,8 +211,10 @@ def Nodes_info_recv(socket, Nodes_infos):
 
     # Recieve the len of the dict chiffré
     length=recv_data(socket,4096)
+    
     # Recieve the dict
     data=socket.recv(4096)
+
     while len(data)<length:
         data+=socket.recv(4096)
     Nodes_infos.update(pickle.loads(data))
@@ -285,19 +306,22 @@ def Net_init():
 
 def main():
     # Verifier les arguments
-    if len(sys.argv)<15:
-        print("Usage : ./Orchest machine_file executable ID_Base N L1 L2 Rounds T_launch(s) T_Round(s) alpha beta gamma B_percent T_percent")
+    if len(sys.argv)<17:
+        print("Usage : ./Orchest machine_file executable T_launch(s) ID_Base N L1 L2 Rounds T_Round(s) T_update(s) T_connection(s) alpha beta gamma B_percent T_percent")
         exit()
     else:
         Executable=sys.argv[2]
-        id_base=int(sys.argv[3])
-        N=int(sys.argv[4])
-        L1=int(sys.argv[5])
-        L2=int(sys.argv[6])
-        Rounds=int(sys.argv[7])
-        T_launch=int(sys.argv[8])
-        B_percent=float(sys.argv[13])
-        T_percent=float(sys.argv[14])
+        T_launch=int(sys.argv[3])
+        id_base=int(sys.argv[4])
+        N=int(sys.argv[5])
+        L1=int(sys.argv[6])
+        L2=int(sys.argv[7])
+        Rounds=int(sys.argv[8])
+        T_r=int(sys.argv[9])
+        T_u=int(sys.argv[10])
+        T_c=int(sys.argv[11])
+        B_percent=float(sys.argv[15])
+        T_percent=float(sys.argv[16])
         # # Check if we have root privileges
         # if os.geteuid() != 0:
         # # If not, try to elevate privileges
@@ -334,13 +358,14 @@ def main():
     # Le nombre des machines disponible
     Nmbr_procs=len(Machine_Dispo)
     # heure et minute déxecution
-    now_f, Launching_time_f=time_span(T_launch)
+    now_f, Launching_time_f, _, _=time_span(T_launch, 0, 0)
     if Nmbr_procs==0:
         print("\nThere are no machines to run the script on")
         exit(1)
     else :
-        print(f"OK\n==> Current time :{now_f}\n==> Launch time :{Launching_time_f}\n==> Rounds : {Rounds}")
-    
+        print(f"OK\n==> Current time :{now_f}\n==> Launch time :{Launching_time_f}")
+    print(f"\n\n\t\t<==  Parameters  ==>\nNode per machine : {N}\nL1 : {L1}\nL2 : {L2}\nRounds : {Rounds}\nRound time span : {T_r}s\nUpdate time span : {T_u}s\nConnection time span : {T_c}s\nByzantine : {B_percent}%\nTrusted: {T_percent}%\n\n")
+
     # Les vues des noeuds
     Nodes_Views, Ids, ID_byzantine=Node_Init_Views(id_base, N, Nmbr_procs, L1, B_percent, T_percent)
 
@@ -366,7 +391,7 @@ def main():
         #Liste des arguments
         OutpipeR ,OutpipeW=os.pipe()
         ErrpipeR ,ErrpipeW=os.pipe()
-        Args=["ssh",Machine_Dispo[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port),Launching_time_f]+[str(ids_bases[i])]+sys.argv[4:]
+        Args=["ssh",Machine_Dispo[i],"python3","~/Desktop/RAPTEE/"+Executable,Hostname,str(Port),Launching_time_f]+[str(ids_bases[i])]+sys.argv[5:]
         pid=os.fork()
         if pid==0:
             # Redirection des tubes
@@ -414,14 +439,12 @@ def main():
     time_stop(2) #attendre 2 secondes 
     for i in range(Nmbr_procs):
         send_data(sockets[i], Nodes_Views[i])
-
-    # Lancer les threads pour récupérer les informations des noeuds
-    for i in range(Nmbr_procs):
+        # Lancer les threads pour récupérer les informations des noeuds
         Node_info_threads[i].start()
-
+ 
     for i in range(Nmbr_procs):
         Node_info_threads[i].join()
-
+        
     # Envoyer les information à chaque machine
     data_to_send=pickle.dumps(Nodes_infos)
     for i in range(Nmbr_procs):
