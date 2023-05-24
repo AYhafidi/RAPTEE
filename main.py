@@ -15,7 +15,7 @@ import hashlib
 import secrets
 from sampler import *
 import inspect
-
+import numpy as np
 
 
 
@@ -32,10 +32,10 @@ def print_open_fds(print_all=False):
 
 
 class Node:
-    def __init__(self, L1, id, View, L2):
+    def __init__(self, L1, Id, View, L2):
 
         # Node info
-        self.id = id   # Node's ID
+        self.Id = Id   # Node's ID
         self.L1=L1 # View list length
         self.L2=L2 # Sample list length
         self.ip = socket.gethostname()   # Node's IP address
@@ -100,13 +100,13 @@ class Node:
 
 
 class Trusted(Node):
-    def __init__(self,L1, id, View, L2, Key):
-        super().__init__(L1, id, View, L2)
+    def __init__(self,L1, Id, View, L2, Key):
+        super().__init__(L1, Id, View, L2)
         self.Private_key=Key
 
 class Byzantine(Node):
-    def __init__(self,L1, id, View, L2, B_ids):
-        super().__init__(L1, id, View, L2)
+    def __init__(self,L1, Id, View, L2, B_ids):
+        super().__init__(L1, Id, View, L2)
         self.B_ids=B_ids # ID des autres noeuds byzantin
 
 
@@ -128,14 +128,14 @@ def Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha, End_time):
         nodes[i+id_base].PUSH_To=random.sample(nodes[i+id_base].Nu, int(alpha*L1))
         nodes[i+id_base].PULL_To=random.sample(nodes[i+id_base].Nu, int(beta*L1))
         try:
-            for id in set(nodes[i+id_base].PUSH_To + nodes[i+id_base].PULL_To):
+            for Id in set(nodes[i+id_base].PUSH_To + nodes[i+id_base].PULL_To):
 
                 
-                neighbor_ip = Nodes_infos[id][0]
+                neighbor_ip = Nodes_infos[Id][0]
 
-                neighbour_port = Nodes_infos[id][1]
+                neighbour_port = Nodes_infos[Id][1]
 
-                nodes[i+id_base].neighbor_sockets[id] = Gossip_connect(neighbor_ip, neighbour_port)
+                nodes[i+id_base].neighbor_sockets[Id] = Gossip_connect(neighbor_ip, neighbour_port)
 
 
         except Exception as e:
@@ -277,68 +277,70 @@ def polling_nodes(Node, N_event):
 
                         # print("after receiving push")
 
-                    elif Req.type==R_type.PULL_REQ:
+                    elif Req.type==R_type.PULL_REQ:                         
+                        if Node.__class__.__name__=="Byzantine":
+                            if len(Node.B_ids)>=L1:
+                                Pull_view = random.sample(Node.B_ids, L1)
+                            else:
+                                Pull_view=Node.B_ids
+                                length=L1-len(Pull_view)
+                                Pull_view.extend(random.choices(Node.B_ids ,k=length))
+                                
+                            pull_req = Request(Req.destinataire, Req.source, 2, Pull_view)
+                            send_data(Sockets[descriptor], pull_req)  
                         
+                        else :
+                            pull_req = Request(Req.destinataire, Req.source, 2, Node.Nu)
+                            send_data(Sockets[descriptor], pull_req)
+                            
                         # Authentification first
-
-                        rA = secrets.token_bytes(4)
+                        # rA = secrets.token_bytes(4)
 
                         
         
-                        to_send_autentification = Request(Req.destinataire, Req.source, 0, rA)
+                        # to_send_autentification = Request(Req.destinataire, Req.source, 0, rA)
 
-                        send_data(Sockets[descriptor],to_send_autentification)
+                        # send_data(Sockets[descriptor],to_send_autentification)
                 
 
-                    elif Req.type==R_type.AUTHENTIFICATION_REQ:
+                    # elif Req.type==R_type.AUTHENTIFICATION_REQ:
                         
 
-                        key = "816c7819305c1e1a"
+                    #     key = "816c7819305c1e1a"
                         
-                        rA = Req.message
+                    #     rA = Req.message
 
-                        rB = secrets.token_bytes(4)
+                    #     rB = secrets.token_bytes(4)
 
-                        encrypted=encoded(key,rA,rB)
+                    #     encrypted=encoded(key,rA,rB)
 
-                        # print(encrypted)
+                    #     # print(encrypted)
                     
-                        to_send_encrypted = [rA,rB,encrypted]
+                    #     to_send_encrypted = [rA,rB,encrypted]
                         
-                        auth_response_to_send = Request(Req.destinataire, Req.source, 4, to_send_encrypted)
+                    #     auth_response_to_send = Request(Req.destinataire, Req.source, 4, to_send_encrypted)
 
-                        send_data(Sockets[descriptor],auth_response_to_send)
+                    #     send_data(Sockets[descriptor],auth_response_to_send)
 
-                        # print("PAPAPAPAPAPA")
+                    #     # print("PAPAPAPAPAPA")
 
-                    elif Req.type==R_type.AUTHENTIFICATION_RES:
+                    # elif Req.type==R_type.AUTHENTIFICATION_RES:
 
-                        encrypted = Req.message
+                    #     encrypted = Req.message
 
-                        key = "816c7819305c1e1a"
+                    #     key = "816c7819305c1e1a"
                         
-                        can_trust = decode(encrypted[0], encrypted[1], key, encrypted[2])
+                    #     can_trust = decode(encrypted[0], encrypted[1], key, encrypted[2])
 
                         
                         
-                        # if 1==1  if the node is trusted
-                        if can_trust==True:
-                            # print('HOOOOOOOOOOOOOY : Node is trusted')
-                            # print(can_trust)
-                            view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
+                    #     # if 1==1  if the node is trusted
+                    #     if can_trust==True:
+                    #         # print('HOOOOOOOOOOOOOY : Node is trusted')
+                    #         # print(can_trust)
+                    #         view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
 
-                            send_data(Sockets[descriptor],view_to_pull)
-
-
-
-
-                        else:
-                            if Node.__class__.__name__==Byzantine:
-                                view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
-                            else:
-                                view_to_pull = Request(Req.destinataire, Req.source, 2, Node.Nu)
-
-                            send_data(Sockets[descriptor],view_to_pull)  
+                            
 
 
                     elif Req.type==R_type.PULL_RES:
@@ -359,7 +361,7 @@ def Nodes_comunication(node):
 
     for Neighbour_Id in neighbour_samples_push:
         sys.stdout.flush()
-        to_send_push = Request(node.id, Neighbour_Id, 3, None)
+        to_send_push = Request(node.Id, Neighbour_Id, 3, None)
 
         try:
             send_data(node.neighbor_sockets[Neighbour_Id],to_send_push)
@@ -370,7 +372,7 @@ def Nodes_comunication(node):
     time_stop(2)
     for Neighbour_Id in neighbour_samples_pull:
 
-        to_send_pull = Request(node.id, Neighbour_Id, 1, None)
+        to_send_pull = Request(node.Id, Neighbour_Id, 1, None)
 
         try:
             send_data(node.neighbor_sockets[Neighbour_Id], to_send_pull)
@@ -423,6 +425,7 @@ Nodes_Views=pickle.loads(data)
 # Tableau des sockets
 Sockets={peer_conn[rang][1].fileno():peer_conn[rang][1] for rang in peer_conn}
 
+
 # Poll pour finir le programme
 t=threading.Thread(target=Ending_poll, args=(Sockets,))
 t.start()
@@ -435,23 +438,23 @@ for i in range(n):
     if Nodes_Views[Id][0]=="B":
         nodes[Id]=Byzantine(L1, Id, Nodes_Views[Id][1], L2, Nodes_Views[Id][2])
 
-
     elif Nodes_Views[Id][0]=="T":
         nodes[Id]=Trusted(L1, Id, Nodes_Views[Id][1], L2, 0)
+        
     else :
         nodes[Id]=Node(L1, Id, Nodes_Views[Id][1], L2)
     Local_Nodes_infos[Id]=[nodes[Id].ip, nodes[Id].port]
     
-
 data_to_send=pickle.dumps(Local_Nodes_infos)
 send_data(Orchest_sock, len(data_to_send))
+time_stop(1)
 send_data(Orchest_sock, Local_Nodes_infos)
+
 
 # Recieve the len of the encrypted dict
 length=recv_data(Orchest_sock,4096)
+
 # Recieve the dict
-
-
 
 data=Orchest_sock.recv(4096)
 while len(data)<length:
@@ -467,7 +470,7 @@ nodes=Connecting_nodes(nodes, Nodes_infos, n, L1, beta, alpha, T_end_connection.
                                       
 
 # DATA dict
-Data={k:{id:{"View":[],"Sample":[]} for id in nodes} for k in range(1, Rounds+1)}
+Data={k:{Id:{"View":[],"Sample":[]} for Id in nodes} for k in range(1, Rounds+1)}
 Comm_event=[threading.Event() for i in range(n)]
 
                                                        ### Commencer l'échange au même temps ###
@@ -524,21 +527,22 @@ for k in range(1, Rounds+1):
     
 
 
-    for id in nodes:
-        if Nodes_Views[id][0]!="B":
-            if not nodes[id].PUSH_IDS:
-                print("didn't recieve any push")
-                sys.stdout.flush()
+    for Id in nodes:
+        if Nodes_Views[Id][0]!="B":
+            if (not nodes[Id].PUSH_IDS) or ( len(nodes[Id].PUSH_IDS)>int(alpha*L1) )  :
+                Data[k][Id]["View"]=nodes[Id].get_Nu()
+                Data[k][Id]["Sample"]=nodes[Id].get_Su()
+                nodes[Id].round_reset()
                 continue
 
             try:
-                Sample=l2_sampler(nodes[id].get_Su(), int(gamma*nodes[id].L1))
+                Sample=l2_sampler(nodes[Id].get_Su(), int(gamma*nodes[Id].L1))
             except Exception as e:
                 print("Sample : " , e)
                 sys.stdout.flush()
             
             try:
-                View_update=l2_sampler(nodes[id].PULL_IDS, int(beta*L1))+l2_sampler(nodes[id].PUSH_IDS, int(alpha*L1))
+                View_update=l2_sampler(nodes[Id].PULL_IDS, int(beta*L1))+l2_sampler(nodes[Id].PUSH_IDS, int(alpha*L1))
             except Exception as e:
                 print("PUSH U PULL :", e)
                 sys.stdout.flush()
@@ -547,10 +551,10 @@ for k in range(1, Rounds+1):
             
             try:
                 view_up=View_update+Sample
-                nodes[id].update_neighbor_list(View_update+Sample)
-                nodes[id].update_sample_list(l2_sampler( nodes[id].PULL_IDS + nodes[id].PUSH_IDS, int(gamma*nodes[id].L2)) )
-                Data[k][id]["View"]=nodes[id].get_Nu()
-                Data[k][id]["Sample"]=nodes[id].get_Su()
+                nodes[Id].update_neighbor_list(View_update+Sample)
+                nodes[Id].update_sample_list(l2_sampler( nodes[Id].PULL_IDS + nodes[Id].PUSH_IDS, int(gamma*nodes[Id].L2)) )
+                Data[k][Id]["View"]=nodes[Id].get_Nu()
+                Data[k][Id]["Sample"]=nodes[Id].get_Su()
             except Exception as e:
                 print("Update :", e)
                 sys.stdout.flush()
@@ -558,13 +562,13 @@ for k in range(1, Rounds+1):
 
                 
             try:
-                nodes[id].round_reset()
+                nodes[Id].round_reset()
             except Exception as e:
                 print("Reseting [1]:", e)
                 sys.stdout.flush()
         else:
             try:
-                nodes[id].round_reset()
+                nodes[Id].round_reset()
             except Exception as e:
                 print("Reseting [2]:", e)
                 sys.stdout.flush()
@@ -580,6 +584,7 @@ for k in range(1, Rounds+1):
 # Envoi des informations des noeuds
 data_to_send=pickle.dumps(Data)
 send_data(Orchest_sock, len(data_to_send))
+time_stop(2)
 send_data(Orchest_sock, Data)
                                                         ###  Ending Programme  ###
 print(f"End, Opened fd : {print_open_fds()}")

@@ -107,4 +107,3 @@ def l2_sampler(stream, l2):
 
             return(sample_list)
 
-

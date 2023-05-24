@@ -1,6 +1,8 @@
 import random
 from math import floor, inf
 import numpy as np
+import os
+import json
 
 def find_indices(list_to_check, item_to_find):
     array = np.array(list_to_check)
@@ -89,12 +91,10 @@ def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage, B_percent, T_percent):
         id_base+=N
     return Machine_Dict, Ids, ID_byzantine
 
+def save_data(N, Nmbr_proc, Max_storage, Rounds, B_percent, T_percent, Views):
+    with open("./data/test.json", "w") as f:
+        data={"Nodes": N*Nmbr_proc, "Rounds":Rounds, "L1": Max_storage, "L2" : 5, "B%": B_percent, "T%": T_percent, "R_Views":Views}
+        f.write(json.dumps(data))
 
-Machine_Dict, Ids, ID_byzantine= Node_Init_Views(1000, 10, 23, 15, 0.28 , 0)
 
-for i in range(len(Machine_Dict)):
-    count=0
-    for id in Machine_Dict[i]:
-        if Machine_Dict[i][id][0]=="B":
-            count+=1
-    print(f" [ {i} ] contains : {count} Byzantine nodes")
+

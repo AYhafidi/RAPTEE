@@ -13,6 +13,7 @@ import random
 import datetime
 from math import floor, inf
 from os.path import exists
+import json
 
 class R_type(Enum):
 
@@ -31,6 +32,11 @@ class Request:
         self.message=message
 
 
+def List_int(Array):
+    for i in range(len(Array)):
+        Array[i]=int(Array[i])
+    return Array
+
 def time_span(T_r, T_u, T_c):
     Current_time = datetime.datetime.now() # Temps actuelle
     Round_ending_time=Current_time+datetime.timedelta(seconds=T_r) # Temps de fin du round
@@ -48,7 +54,12 @@ def wait_time(Ending_time):
     while(datetime.datetime.now().strftime("%H:%M:%S")!=Ending_time):
         continue
 
-    
+
+def save_data(N, Nmbr_procs, L1, L2, Rounds, B_percent, T_percent, Views):
+    with open("./data/test.json", "w") as f:
+        data={"Nodes": N*Nmbr_procs, "Rounds":Rounds, "L1": L1, "L2" : L2, "B%": B_percent, "T%": T_percent, "R_Views":Views}
+        f.write(json.dumps(data))
+        
 def find_indices(list_to_check, item_to_find):
     array = np.array(list_to_check)
     indices = np.where(array == item_to_find)[0]
@@ -78,8 +89,8 @@ def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage, B_percent, T_percent):
             if len(ID_byzantine)==N_byzantine:
                 break
 
-    for id in ID_byzantine:
-        Index[id-id_base]= inf
+    for Id in ID_byzantine:
+        Index[Id-id_base]= inf
 
     # Noeud de confiance
     N_Trusted=floor(N*Nmbr_proc*T_percent)
@@ -114,13 +125,13 @@ def Node_Init_Views(id_base, N, Nmbr_proc, Max_storage, B_percent, T_percent):
                         Index[i-id_base]+=1
                 ID_dict[Id].extend(Available_Ids)
     
-    for id in ID_dict:
-        if id in ID_byzantine:
-            ID_dict[id]=["B",ID_dict[id],ID_byzantine]
-        elif id in ID_Trusted:
-            ID_dict[id]=["T",ID_dict[id]]
+    for Id in ID_dict:
+        if Id in ID_byzantine:
+            ID_dict[Id]=["B",ID_dict[Id],ID_byzantine]
+        elif Id in ID_Trusted:
+            ID_dict[Id]=["T",ID_dict[Id]]
         else:
-            ID_dict[id]=["N",ID_dict[id]]
+            ID_dict[Id]=["N",ID_dict[Id]]
     for i in range(Nmbr_proc):
         Aux_dict={}
         for j in range(N):
@@ -189,10 +200,10 @@ def Data_analyser(Data, Ids, ID_byzantine, Rounds, L1):
     discovery_percent = 0.75 # Discovery percentage
     time_to_discovery = 0 #Time to discover 75% of non byzantine nodes
                                         ##  Count time to discovery ##
-    for id in IDs_to_check:
+    for Id in IDs_to_check:
         Ids_dicovered=[]
         for k in range(1, Rounds+1):
-            Ids_dicovered=list(set(Ids_dicovered) ^ set(check_elemnt_in(Data[k][id]["View"], ID_byzantine)))
+            Ids_dicovered=list(set(Ids_dicovered) ^ set(check_elemnt_in(Data[k][Id]["View"], ID_byzantine)))
             if (float(len(Ids_dicovered))/N_normal_nodes)>discovery_percent:
                 if k>time_to_discovery:
                     time_to_discovery=k
@@ -200,8 +211,8 @@ def Data_analyser(Data, Ids, ID_byzantine, Rounds, L1):
                                         ## Percentage of Byzantine IDs in the views of correct nodes ##
     for k in range(1, Rounds+1):
         aux=0
-        for id in IDs_to_check:
-            ID_N=len(check_elemnt_in(Data[k][id]["View"], ID_byzantine))
+        for Id in IDs_to_check:
+            ID_N=len(check_elemnt_in(Data[k][Id]["View"], ID_byzantine))
             aux += L1 - ID_N
         if aux>Count_byzantine:
             Count_byzantine=aux
@@ -222,6 +233,7 @@ def Nodes_info_recv(socket, Nodes_infos):
 def Data_recv(socket, Data):
     # Recieve the len of the dict chiffré
     length=recv_data(socket,4096)
+    
     # Recieve the dict
     data=socket.recv(4096)
     while len(data)<length:
@@ -357,6 +369,10 @@ def main():
             print("☆ ",end="")
     # Le nombre des machines disponible
     Nmbr_procs=len(Machine_Dispo)
+    
+    # Les vues des noeuds
+    Nodes_Views, Ids, ID_byzantine=Node_Init_Views(id_base, N, Nmbr_procs, L1, B_percent, T_percent)
+    print("Done")
     # heure et minute déxecution
     now_f, Launching_time_f, _, _=time_span(T_launch, 0, 0)
     if Nmbr_procs==0:
@@ -365,9 +381,6 @@ def main():
     else :
         print(f"OK\n==> Current time :{now_f}\n==> Launch time :{Launching_time_f}")
     print(f"\n\n\t\t<==  Parameters  ==>\nNode per machine : {N}\nL1 : {L1}\nL2 : {L2}\nRounds : {Rounds}\nRound time span : {T_r}s\nUpdate time span : {T_u}s\nConnection time span : {T_c}s\nByzantine : {B_percent}%\nTrusted: {T_percent}%\n\n")
-
-    # Les vues des noeuds
-    Nodes_Views, Ids, ID_byzantine=Node_Init_Views(id_base, N, Nmbr_procs, L1, B_percent, T_percent)
 
     # Id bases pour distinguer les noeuds de chaque machine
     ids_bases=[]
@@ -441,7 +454,7 @@ def main():
         send_data(sockets[i], Nodes_Views[i])
         # Lancer les threads pour récupérer les informations des noeuds
         Node_info_threads[i].start()
- 
+        
     for i in range(Nmbr_procs):
         Node_info_threads[i].join()
         
@@ -449,18 +462,29 @@ def main():
     data_to_send=pickle.dumps(Nodes_infos)
     for i in range(Nmbr_procs):
         send_data(sockets[i], len(data_to_send))
+    time_stop(2)
+      
+    for i in range(Nmbr_procs):
         send_data(sockets[i], Nodes_infos)
 
     # Lancer les threads pour récupérer Data des échanges
     for i in range(Nmbr_procs):
         Data_threads[i].start()
-
+   
     for i in range(Nmbr_procs):
         Data_threads[i].join()
-
+    
     # Analyse des données
-
+        
     print(Data_analyser(Data, Ids, ID_byzantine, Rounds, L1))
+
+    # Save data
+    
+    for k in Data:
+        for Id in Data[k]:
+            Data[k][Id]["View"]=List_int(Data[k][Id]["View"])
+            Data[k][Id]["Sample"]=List_int(Data[k][Id]["Sample"])
+    save_data(N, Nmbr_procs, L1, L2, Rounds, B_percent, T_percent, Data)
 
     # attendre la fonction poll
     t.join()
